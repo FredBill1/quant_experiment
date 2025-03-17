@@ -14,6 +14,13 @@
             "request": "launch",
             "module": "quant_experiment.transfer_learning",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "quant",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "quant_experiment.quant",
+            "console": "integratedTerminal"
         }
     ]
 }

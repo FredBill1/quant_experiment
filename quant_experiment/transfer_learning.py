@@ -76,7 +76,7 @@ def val_one_epoch(
 
 def main() -> None:
     device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
-    model = create_model(frozen=True)
+    model = create_model(from_pretrained=True, frozen=True)
     model = model.to(device)
     summary(model, input_size=(1, 3, IMAGE_SIZE, IMAGE_SIZE))
 
