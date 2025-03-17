@@ -68,7 +68,7 @@ def main() -> None:
             writer.add_scalar("train/accuracy", train_acc, epoch)
             writer.add_scalar("val/loss", val_loss, epoch)
             writer.add_scalar("val/accuracy", val_acc, epoch)
-            if early_stopping(val_loss) and epoch >= UNFROZEN_MIN_EPOCHS:
+            if early_stopping(val_loss, model) and epoch >= UNFROZEN_MIN_EPOCHS:
                 print("Early stopping")
                 break
             scheduler.step(val_loss)

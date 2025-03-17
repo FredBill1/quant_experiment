@@ -23,5 +23,7 @@ class EarlyStopping:
         return self._counter >= self._patience
 
     @property
-    def best_state_dict(self) -> Optional[dict]:
+    def best_state_dict(self) -> dict:
+        if self._best_state_dict is None:
+            raise ValueError("model was not passed to the __call__ method")
         return self._best_state_dict
