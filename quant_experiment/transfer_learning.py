@@ -6,16 +6,10 @@ from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary
 from tqdm import tqdm
 
-from .config import IMAGE_SIZE, DatasetSplit
+from .config import DATALOADER_ARGS, IMAGE_SIZE, DatasetSplit
 from .data.imagewoof import get_imagewoof_dataset
 from .models.resnet18 import create_model
-
-DATALOADER_ARGS = dict(
-    batch_size=64,
-    num_workers=4,
-    pin_memory=True,
-    persistent_workers=True,
-)
+from .training import get_device, train_one_epoch, val_one_epoch
 
 FROZEN_EPOCHS = 10
 FROZEN_LR = 1e-3
@@ -23,61 +17,10 @@ UNFROZEN_EPOCHS = 10
 UNFROZEN_LR = 1e-5
 
 
-def train_one_epoch(
-    model: torch.nn.Module,
-    train_loader: DataLoader,
-    criterion: torch.nn.Module,
-    optimizer: torch.optim.Optimizer,
-    device: torch.device,
-) -> tuple[float, float]:
-    model.train()
-    total_loss, total_correct, total_samples = 0.0, 0, 0
-    pbar = tqdm(train_loader, desc="Training")
-    for inputs, targets in pbar:
-        inputs, targets = inputs.to(device), targets.to(device)
-        optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = criterion(outputs, targets)
-        loss.backward()
-        optimizer.step()
-
-        total_loss += loss.item()
-        _, predicted = outputs.max(1)
-        total_correct += predicted.eq(targets).sum().item()
-        total_samples += targets.size(0)
-        loss, accuracy = total_loss / total_samples, total_correct / total_samples
-        pbar.set_postfix(loss=loss, accuracy=accuracy)
-    return loss, accuracy
-
-
-def val_one_epoch(
-    model: torch.nn.Module,
-    val_loader: DataLoader,
-    criterion: torch.nn.Module,
-    device: torch.device,
-) -> tuple[float, float]:
-    model.eval()
-    total_loss, total_correct, total_samples = 0.0, 0, 0
-    pbar = tqdm(val_loader, desc="Validation")
-    with torch.no_grad():
-        for inputs, targets in pbar:
-            inputs, targets = inputs.to(device), targets.to(device)
-            outputs = model(inputs)
-            loss = criterion(outputs, targets)
-
-            total_loss += loss.item()
-            _, predicted = outputs.max(1)
-            total_correct += predicted.eq(targets).sum().item()
-            total_samples += targets.size(0)
-            loss, accuracy = total_loss / total_samples, total_correct / total_samples
-            pbar.set_postfix(loss=loss, accuracy=accuracy)
-    return loss, accuracy
-
-
 def main() -> None:
-    device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
+    device = get_device()
     model = create_model(from_pretrained=True, frozen=True)
-    model = model.to(device)
+    model.to(device)
     summary(model, input_size=(1, 3, IMAGE_SIZE, IMAGE_SIZE))
 
     criterion = torch.nn.CrossEntropyLoss()
