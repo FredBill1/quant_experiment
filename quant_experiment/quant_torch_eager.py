@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from .config import DATALOADER_ARGS
+from .config import CWD, DATALOADER_ARGS
 from .data.imagewoof import DatasetSplit, get_imagewoof_dataset
 from .models.resnet18 import create_model
 from .utils.training import evaluate, get_device, train_one_epoch
@@ -11,8 +11,8 @@ if TYPE_CHECKING:
     import torch.ao.quantization
     import torch.nn.intrinsic.qat
 
-FINETUNE_EPOCH = 5
-FINETUNE_LR = 1e-5
+
+MODEL = CWD / "runs/Mar16_23-43-58_FredBill/model.pth"
 
 
 def main():
@@ -29,7 +29,7 @@ def main():
     def dynamic() -> None:  #! Note that Conv2d does not support dynamic quantization yet
         print("Dynamic quantization")
         model_fp32 = create_model(from_pretrained=False, frozen=False, quantable=True, quantize=False)
-        model_fp32.load_state_dict(torch.load("runs/Mar16_23-43-58_FredBill/model.pth"))
+        model_fp32.load_state_dict(torch.load(MODEL))
         model_fp32.to(device)
 
         model_int8 = torch.ao.quantization.quantize_dynamic(
@@ -37,6 +37,7 @@ def main():
             qconfig_spec=None,
             dtype=torch.quint4x2,
         )
+        torch.save(model_int8.state_dict(), MODEL.with_stem("model_dynamic"))
 
         test_loss, test_acc = evaluate(model_int8, test_loader, criterion, device)
         print(f"{test_loss=} {test_acc=}")
@@ -44,7 +45,7 @@ def main():
     def static() -> None:
         print("Static quantization")
         model_fp32 = create_model(from_pretrained=False, frozen=False, quantable=True, quantize=False)
-        model_fp32.load_state_dict(torch.load("runs/Mar16_23-43-58_FredBill/model.pth"))
+        model_fp32.load_state_dict(torch.load(MODEL))
         model_fp32.to(device)
 
         # model must be set to eval mode for static quantization logic to work
@@ -81,6 +82,7 @@ def main():
         # used with each activation tensor, and replaces key operators with quantized
         # implementations.
         model_int8 = torch.ao.quantization.convert(model_fp32_prepared.to(quant_device))
+        torch.save(model_int8.state_dict(), MODEL.with_stem("model_static"))
 
         print("Evaluated quantized model:")
         test_loss, test_acc = evaluate(model_int8, test_loader, criterion, quant_device)
@@ -89,7 +91,7 @@ def main():
     def qat() -> None:
         print("Quantization Aware Training")
         model_fp32 = create_model(from_pretrained=False, frozen=False, quantable=True, quantize=False)
-        model_fp32.load_state_dict(torch.load("runs/Mar16_23-43-58_FredBill/model.pth"))
+        model_fp32.load_state_dict(torch.load(MODEL))
         model_fp32.to(device)
 
         # model must be set to eval for fusion to work
@@ -108,7 +110,7 @@ def main():
 
         # fuse the activations to preceding layers, where applicable
         # this needs to be done manually depending on the model architecture
-        model_fp32.fuse_model(is_qat=False)
+        model_fp32.fuse_model(is_qat=True)
         model_fp32_fused = model_fp32
 
         # Prepare the model for QAT. This inserts observers and fake_quants in
@@ -117,9 +119,13 @@ def main():
         model_fp32_prepared = torch.ao.quantization.prepare_qat(model_fp32_fused.train())
 
         # run the training loop (not shown)
-        optimizer = torch.optim.Adam(model_fp32_prepared.parameters(), lr=FINETUNE_LR)
-        for epoch in range(1, FINETUNE_EPOCH + 1):
+        optimizer = torch.optim.Adam(model_fp32_prepared.parameters(), lr=1e-5)
+        for epoch in range(1, 8 + 1):
             print(f"Epoch {epoch}")
+            if epoch >= 3:
+                model_fp32_prepared.apply(torch.ao.quantization.disable_observer)
+            if epoch >= 2:
+                model_fp32_prepared.apply(torch.nn.intrinsic.qat.freeze_bn_stats)
             train_one_epoch(model_fp32_prepared, train_loader, criterion, optimizer, device)
             evaluate(model_fp32_prepared, val_loader, criterion, device)
 
@@ -129,6 +135,7 @@ def main():
         # and replaces key operators with quantized implementations.
         model_fp32_prepared.eval()
         model_int8 = torch.ao.quantization.convert(model_fp32_prepared.to(quant_device))
+        torch.save(model_int8.state_dict(), MODEL.with_stem("model_qat"))
 
         # run the model, relevant calculations will happen in int8
         test_loss, test_acc = evaluate(model_int8, test_loader, criterion, quant_device)

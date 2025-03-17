@@ -2,7 +2,7 @@
 
 [optimum-quanto](https://github.com/huggingface/optimum-quanto), [Reference Code](https://github.com/huggingface/optimum-quanto/blob/main/examples/vision/image-classification/pets/quantize_vit_model.py).
 
-[PyTorch Eager Mode Quantization](https://pytorch.org/docs/stable/quantization.html#eager-mode-quantization)
+[PyTorch Eager Mode Quantization](https://pytorch.org/docs/stable/quantization.html#eager-mode-quantization), [Reference Code](https://pytorch.org/tutorials/advanced/static_quantization_tutorial.html).
 
 ## Get Started
 
