@@ -2,6 +2,8 @@
 
 [optimum-quanto](https://github.com/huggingface/optimum-quanto), [Reference Code](https://github.com/huggingface/optimum-quanto/blob/main/examples/vision/image-classification/pets/quantize_vit_model.py).
 
+[PyTorch Eager Mode Quantization](https://pytorch.org/docs/stable/quantization.html#eager-mode-quantization)
+
 ## Get Started
 
 ### 1. Prepare Dataset
@@ -55,5 +57,9 @@ python -m quant_experiment.transfer_learning
 ### 2. Quantization
 
 ```bash
-python -m quant_experiment.quant
+python -m quant_experiment.quant_optimum_quanto
+```
+
+```bash
+python -m quant_experiment.quant_torch_eager
 ```

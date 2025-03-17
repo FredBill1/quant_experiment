@@ -11,7 +11,7 @@ def create_model(
     frozen: bool = False,
     quantable: bool = False,
     quantize: bool = False,
-) -> torch.nn.Module:
+) -> models.ResNet | qmodels.QuantizableResNet:
     if quantize and not quantable:
         raise ValueError("Model must be quantable to be quantized")
     weights = None if not from_pretrained else qmodels.ResNet18_QuantizedWeights.DEFAULT if quantize else models.ResNet18_Weights.DEFAULT
