@@ -1,8 +1,9 @@
+from typing import Optional
+
 import torch
 from optimum.quanto import QTensor
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from typing import Optional
 
 
 def get_device() -> str:
@@ -56,7 +57,7 @@ def evaluate(
     model.eval()
     total_loss, total_correct, total_samples = 0.0, 0, 0
     pbar = tqdm(val_loader)
-    with torch.inference_mode():
+    with torch.no_grad():
         for inputs, targets in pbar:
             inputs, targets = inputs.to(device), targets.to(device)
             outputs = model(inputs)
