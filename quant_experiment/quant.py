@@ -8,6 +8,9 @@ from .data.imagewoof import DatasetSplit, get_imagewoof_dataset
 from .models.resnet18 import create_model
 from .training import get_device, train_one_epoch, val_one_epoch
 
+FINETUNE_EPOCH = 5
+FINETUNE_LR = 1e-5
+
 
 def main():
     device = get_device()
@@ -18,8 +21,10 @@ def main():
 
     test_data = get_imagewoof_dataset(DatasetSplit.TEST)[0]
     test_loader = torch.utils.data.DataLoader(test_data, **DATALOADER_ARGS)
-    train_data = get_imagewoof_dataset(DatasetSplit.TRAIN_AND_VAL)[0]  # TODO: should I use only training data or train+val data?
+    train_data = get_imagewoof_dataset(DatasetSplit.TRAIN)[0]
     train_loader = torch.utils.data.DataLoader(train_data, **DATALOADER_ARGS)
+    val_data = get_imagewoof_dataset(DatasetSplit.VAL)[0]
+    val_loader = torch.utils.data.DataLoader(val_data, **DATALOADER_ARGS)
 
     # print("Original model:")
     # test_loss, test_acc = val_one_epoch(model, test_loader, torch.nn.CrossEntropyLoss(), device)
@@ -34,6 +39,13 @@ def main():
     print("Calibrated:")
     test_loss, test_acc = val_one_epoch(model, test_loader, torch.nn.CrossEntropyLoss(), device)
     print(f"{test_loss=} {test_acc=}")
+
+    print("Finetuning...")
+    optimizer = torch.optim.Adam(model.parameters(), lr=FINETUNE_LR)
+    for epoch in range(1, FINETUNE_EPOCH + 1):
+        print(f"Epoch {epoch}")
+        train_one_epoch(model, train_loader, torch.nn.CrossEntropyLoss(), optimizer, device)
+        val_one_epoch(model, val_loader, torch.nn.CrossEntropyLoss(), device)
 
     print("Freezed model:")
     freeze(model)

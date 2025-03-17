@@ -4,7 +4,6 @@ import torch
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary
-from tqdm import tqdm
 
 from .config import DATALOADER_ARGS, IMAGE_SIZE, DatasetSplit
 from .data.imagewoof import get_imagewoof_dataset
