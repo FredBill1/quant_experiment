@@ -14,6 +14,8 @@ def get_imagewoof_dataset(split: DatasetSplit, random_state: int = SEED) -> tupl
         dataset = ImageFolder(IMAGEWOOF_TEST_DIR, transform=transforms)
         return dataset, dataset.classes
     dataset = ImageFolder(IMAGEWOOF_TRAIN_DIR, transform=transforms)
+    if split == DatasetSplit.TRAIN_AND_VAL:
+        return dataset, dataset.classes
     train_idx, val_idx = train_test_split(np.arange(len(dataset)), test_size=0.2, shuffle=True, stratify=dataset.targets, random_state=random_state)
     return Subset(dataset, train_idx if split == DatasetSplit.TRAIN else val_idx), dataset.classes
 

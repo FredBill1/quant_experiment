@@ -18,6 +18,8 @@ def main():
 
     test_data = get_imagewoof_dataset(DatasetSplit.TEST)[0]
     test_loader = torch.utils.data.DataLoader(test_data, **DATALOADER_ARGS)
+    train_data = get_imagewoof_dataset(DatasetSplit.TRAIN_AND_VAL)[0]  # TODO: should I use only training data or train+val data?
+    train_loader = torch.utils.data.DataLoader(train_data, **DATALOADER_ARGS)
 
     # print("Original model:")
     # test_loss, test_acc = val_one_epoch(model, test_loader, torch.nn.CrossEntropyLoss(), device)
@@ -27,8 +29,7 @@ def main():
     print("Calibrating...")
     model.to(device)
     with Calibration():
-        # TODO: use training data instead of test data
-        val_one_epoch(model, test_loader, torch.nn.CrossEntropyLoss(), device)
+        val_one_epoch(model, train_loader, torch.nn.CrossEntropyLoss(), device)
 
     print("Calibrated:")
     test_loss, test_acc = val_one_epoch(model, test_loader, torch.nn.CrossEntropyLoss(), device)
