@@ -8,7 +8,7 @@ from torchinfo import summary
 from .config import DATALOADER_ARGS, IMAGE_SIZE, DatasetSplit
 from .data.imagewoof import get_imagewoof_dataset
 from .models.resnet18 import create_model
-from .training import get_device, train_one_epoch, val_one_epoch
+from .utils.training import get_device, train_one_epoch, val_one_epoch
 
 FROZEN_EPOCHS = 10
 FROZEN_LR = 1e-3

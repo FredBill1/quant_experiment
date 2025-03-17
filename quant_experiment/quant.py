@@ -6,7 +6,7 @@ from optimum.quanto import Calibration, freeze, qint4, qint8, quantization_map, 
 from .config import DATALOADER_ARGS
 from .data.imagewoof import DatasetSplit, get_imagewoof_dataset
 from .models.resnet18 import create_model
-from .training import get_device, train_one_epoch, val_one_epoch
+from .utils.training import get_device, train_one_epoch, val_one_epoch
 
 FINETUNE_EPOCH = 5
 FINETUNE_LR = 1e-5
