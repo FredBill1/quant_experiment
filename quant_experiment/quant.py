@@ -1,7 +1,7 @@
 import json
 
 import torch
-from optimum.quanto import Calibration, freeze, qint8, quantization_map, quantize, requantize
+from optimum.quanto import Calibration, freeze, qint4, qint8, quantization_map, quantize, requantize
 
 from .config import DATALOADER_ARGS
 from .data.imagewoof import DatasetSplit, get_imagewoof_dataset
@@ -19,11 +19,11 @@ def main():
     test_data = get_imagewoof_dataset(DatasetSplit.TEST)[0]
     test_loader = torch.utils.data.DataLoader(test_data, **DATALOADER_ARGS)
 
-    print("Original model:")
-    test_loss, test_acc = val_one_epoch(model, test_loader, torch.nn.CrossEntropyLoss(), device)
-    print(f"{test_loss=} {test_acc=}")
+    # print("Original model:")
+    # test_loss, test_acc = val_one_epoch(model, test_loader, torch.nn.CrossEntropyLoss(), device)
+    # print(f"{test_loss=} {test_acc=}")
 
-    quantize(model, weights=qint8, activations=qint8)
+    quantize(model, weights=qint4, activations=qint8)
     print("Calibrating...")
     model.to(device)
     with Calibration():
@@ -49,12 +49,11 @@ def main():
     with open("runs/Mar16_23-43-58_FredBill/quantization_map.json") as f:
         q_map = json.load(f)
     model_reloaded = create_model(from_pretrained=False, frozen=False)
-    requantize(model_reloaded, state_dict, q_map)
-    model_reloaded.to(device)
+    requantize(model_reloaded, state_dict, q_map, device)
 
     print("Reloaded model:")
     test_loss, test_acc = val_one_epoch(model_reloaded, test_loader, torch.nn.CrossEntropyLoss(), device)
-    print(f"{test_loss=} {test_acc=}")
+    print(f"{test_loss=} {test_acc=}")  # TODO: why did performance increase?
 
 
 if __name__ == "__main__":
