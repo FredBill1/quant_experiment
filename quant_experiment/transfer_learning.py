@@ -6,7 +6,7 @@ from torchinfo import summary
 
 from .config import IMAGE_SIZE, DatasetSplit
 from .data.imagewoof import get_imagewoof_dataloader
-from .models.resnet18 import create_model
+from .models import create_model
 from .utils.EarlyStopping import EarlyStopping
 from .utils.training import evaluate, get_device, train_one_epoch
 

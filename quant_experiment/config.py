@@ -27,3 +27,5 @@ DATALOADER_ARGS = dict(
     pin_memory=True,
     persistent_workers=True,
 )
+
+DEFAULT_MODEL = "mobilenet_v3_large"

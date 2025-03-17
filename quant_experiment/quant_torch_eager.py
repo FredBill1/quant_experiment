@@ -4,7 +4,7 @@ import torch
 
 from .config import CWD
 from .data.imagewoof import DatasetSplit, get_imagewoof_dataloader
-from .models.resnet18 import create_model
+from .models import create_model
 from .utils.training import evaluate, get_device, train_one_epoch
 
 if TYPE_CHECKING:

@@ -2,20 +2,22 @@ import json
 
 import torch
 from optimum.quanto import Calibration, freeze, qint4, qint8, quantization_map, quantize, requantize
-
+from .config import CWD
 from .data.imagewoof import DatasetSplit, get_imagewoof_dataloader
-from .models.resnet18 import create_model
+from .models import create_model
 from .utils.training import evaluate, get_device, train_one_epoch
 
 FINETUNE_EPOCH = 5
 FINETUNE_LR = 1e-5
+
+MODEL = CWD / "runs/mobilnet_v3_large/model.pth"
 
 
 def main():
     device = get_device()
 
     model = create_model(from_pretrained=False, frozen=False)
-    model.load_state_dict(torch.load("runs/Mar16_23-43-58_FredBill/model.pth"))
+    model.load_state_dict(torch.load(MODEL))
     model.to(device)
 
     test_loader = get_imagewoof_dataloader(DatasetSplit.TEST, num_workers=2)
@@ -50,13 +52,13 @@ def main():
     print(f"{test_loss=} {test_acc=}")
 
     print("Serializing...")
-    torch.save(model.state_dict(), "runs/Mar16_23-43-58_FredBill/model_quant.pth")
-    with open("runs/Mar16_23-43-58_FredBill/quantization_map.json", "w") as f:
+    torch.save(model.state_dict(), MODEL.with_stem(MODEL.stem + "_quanto"))
+    with MODEL.with_stem(MODEL.stem + "_quanto").with_suffix(".json").open("w") as f:
         json.dump(quantization_map(model), f)
 
     print("Deserializing...")
-    state_dict = torch.load("runs/Mar16_23-43-58_FredBill/model_quant.pth")
-    with open("runs/Mar16_23-43-58_FredBill/quantization_map.json") as f:
+    state_dict = torch.load(MODEL.with_stem(MODEL.stem + "_quanto"))
+    with MODEL.with_stem(MODEL.stem + "_quanto").with_suffix(".json").open() as f:
         q_map = json.load(f)
     model_reloaded = create_model(from_pretrained=False, frozen=False)
     requantize(model_reloaded, state_dict, q_map, device)
