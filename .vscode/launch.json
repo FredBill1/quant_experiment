@@ -16,6 +16,13 @@
             "console": "integratedTerminal"
         },
         {
+            "name": "train_from_scratch",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "quant_experiment.train_from_scratch",
+            "console": "integratedTerminal"
+        },
+        {
             "name": "quant_optimum_quanto",
             "type": "debugpy",
             "request": "launch",

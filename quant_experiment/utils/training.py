@@ -2,6 +2,7 @@ import torch
 from optimum.quanto import QTensor
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from typing import Optional
 
 
 def get_device() -> str:
@@ -14,19 +15,28 @@ def train_one_epoch(
     criterion: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
     device: torch.device,
+    *,
+    scaler: Optional[torch.amp.GradScaler] = None,
 ) -> tuple[float, float]:
     model.train()
     total_loss, total_correct, total_samples = 0.0, 0, 0
     pbar = tqdm(train_loader)
     for inputs, targets in pbar:
         inputs, targets = inputs.to(device), targets.to(device)
+        with torch.amp.autocast(torch.device(device).type, enabled=scaler is not None):
+            outputs = model(inputs)
+            if isinstance(outputs, QTensor):
+                outputs = outputs.dequantize()
+            loss = criterion(outputs, targets)
+
         optimizer.zero_grad()
-        outputs = model(inputs)
-        if isinstance(outputs, QTensor):
-            outputs = outputs.dequantize()
-        loss = criterion(outputs, targets)
-        loss.backward()
-        optimizer.step()
+        if scaler is not None:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            optimizer.step()
 
         total_loss += loss.item()
         _, predicted = outputs.max(1)
