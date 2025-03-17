@@ -2,8 +2,8 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from .config import CWD, DATALOADER_ARGS
-from .data.imagewoof import DatasetSplit, get_imagewoof_dataset
+from .config import CWD
+from .data.imagewoof import DatasetSplit, get_imagewoof_dataloader
 from .models.resnet18 import create_model
 from .utils.training import evaluate, get_device, train_one_epoch
 
@@ -18,12 +18,9 @@ MODEL = CWD / "runs/Mar16_23-43-58_FredBill/model.pth"
 def main():
     device = get_device()
 
-    train_data = get_imagewoof_dataset(DatasetSplit.TRAIN)[0]
-    train_loader = torch.utils.data.DataLoader(train_data, **DATALOADER_ARGS)
-    val_data = get_imagewoof_dataset(DatasetSplit.VAL)[0]
-    val_loader = torch.utils.data.DataLoader(val_data, **DATALOADER_ARGS)
-    test_data = get_imagewoof_dataset(DatasetSplit.TEST)[0]
-    test_loader = torch.utils.data.DataLoader(test_data, **DATALOADER_ARGS)
+    test_loader = get_imagewoof_dataloader(DatasetSplit.TEST, num_workers=2)
+    train_loader = get_imagewoof_dataloader(DatasetSplit.TRAIN, num_workers=6)
+    val_loader = get_imagewoof_dataloader(DatasetSplit.VAL, num_workers=2)
     criterion = torch.nn.CrossEntropyLoss()
 
     def dynamic() -> None:  #! Note that Conv2d does not support dynamic quantization yet

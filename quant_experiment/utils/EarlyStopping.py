@@ -1,19 +1,24 @@
 from copy import deepcopy
-from typing import Optional
+from typing import Literal, Optional
 
 import torch
 
 
 class EarlyStopping:
-    def __init__(self, *, patience: int = 0, min_delta: float = 0.0) -> None:
+    def __init__(
+        self,
+        *,
+        patience: int = 0,
+        previous_best_loss: float = float("inf"),
+        previous_best_state_dict: Optional[dict] = None,
+    ) -> None:
         self._patience = patience
-        self._min_delta = min_delta
         self._counter = 0
-        self._best_loss = float("inf")
-        self._best_state_dict: Optional[dict] = None
+        self._best_loss = previous_best_loss
+        self._best_state_dict = previous_best_state_dict
 
     def __call__(self, loss: float, model: Optional[torch.nn.Module] = None) -> bool:
-        if self._best_loss - loss > self._min_delta:
+        if loss < self._best_loss:
             self._best_loss = loss
             self._counter = 0
             if model is not None:
@@ -22,8 +27,11 @@ class EarlyStopping:
             self._counter += 1
         return self._counter >= self._patience
 
+    def reset_counter(self) -> None:
+        self._counter = 0
+
     @property
     def best_state_dict(self) -> dict:
         if self._best_state_dict is None:
-            raise ValueError("model was not passed to the __call__ method")
+            raise ValueError("model hasn't been passed to the __call__ method")
         return self._best_state_dict

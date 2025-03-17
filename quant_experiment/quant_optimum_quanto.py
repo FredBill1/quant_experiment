@@ -3,8 +3,7 @@ import json
 import torch
 from optimum.quanto import Calibration, freeze, qint4, qint8, quantization_map, quantize, requantize
 
-from .config import DATALOADER_ARGS
-from .data.imagewoof import DatasetSplit, get_imagewoof_dataset
+from .data.imagewoof import DatasetSplit, get_imagewoof_dataloader
 from .models.resnet18 import create_model
 from .utils.training import evaluate, get_device, train_one_epoch
 
@@ -19,12 +18,9 @@ def main():
     model.load_state_dict(torch.load("runs/Mar16_23-43-58_FredBill/model.pth"))
     model.to(device)
 
-    test_data = get_imagewoof_dataset(DatasetSplit.TEST)[0]
-    test_loader = torch.utils.data.DataLoader(test_data, **DATALOADER_ARGS)
-    train_data = get_imagewoof_dataset(DatasetSplit.TRAIN)[0]
-    train_loader = torch.utils.data.DataLoader(train_data, **DATALOADER_ARGS)
-    val_data = get_imagewoof_dataset(DatasetSplit.VAL)[0]
-    val_loader = torch.utils.data.DataLoader(val_data, **DATALOADER_ARGS)
+    test_loader = get_imagewoof_dataloader(DatasetSplit.TEST, num_workers=2)
+    train_loader = get_imagewoof_dataloader(DatasetSplit.TRAIN, num_workers=6)
+    val_loader = get_imagewoof_dataloader(DatasetSplit.VAL, num_workers=6)
     criterion = torch.nn.CrossEntropyLoss()
 
     print("Original model:")

@@ -1,22 +1,21 @@
 from pathlib import Path
 
 import torch
-from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary
 
-from .config import DATALOADER_ARGS, IMAGE_SIZE, DatasetSplit
-from .data.imagewoof import get_imagewoof_dataset
+from .config import IMAGE_SIZE, DatasetSplit
+from .data.imagewoof import get_imagewoof_dataloader
 from .models.resnet18 import create_model
 from .utils.EarlyStopping import EarlyStopping
 from .utils.training import evaluate, get_device, train_one_epoch
 
 FROZEN_MIN_EPOCHS = 10
 FROZEN_MAX_EPOCHS = 200
-FROZEN_LR = 1e-3
 UNFROZEN_MIN_EPOCHS = 10
 UNFROZEN_MAX_EPOCHS = 200
-UNFROZEN_LR = 1e-5
+
+USE_AMP = True
 
 
 def main() -> None:
@@ -27,13 +26,13 @@ def main() -> None:
 
     criterion = torch.nn.CrossEntropyLoss()
 
-    train_loader = DataLoader(get_imagewoof_dataset(DatasetSplit.TRAIN)[0], shuffle=True, **DATALOADER_ARGS)
-    val_loader = DataLoader(get_imagewoof_dataset(DatasetSplit.VAL)[0], **DATALOADER_ARGS)
+    train_loader = get_imagewoof_dataloader(DatasetSplit.TRAIN, num_workers=6)
+    val_loader = get_imagewoof_dataloader(DatasetSplit.VAL, num_workers=6)
     with SummaryWriter() as writer:
-        optimizer = torch.optim.Adam(model.parameters(), lr=FROZEN_LR)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5)
-        early_stopping = EarlyStopping(patience=10, min_delta=1e-4)
-        scaler = torch.amp.GradScaler(torch.device(device).type)
+        early_stopping = EarlyStopping(patience=10)
+        scaler = torch.amp.GradScaler(torch.device(device).type) if USE_AMP else None
 
         for frozen_epoch in range(1, FROZEN_MAX_EPOCHS + 1):
             epoch = frozen_epoch
@@ -54,10 +53,10 @@ def main() -> None:
         for param in model.parameters():
             param.requires_grad = True
 
-        optimizer = torch.optim.Adam(model.parameters(), lr=UNFROZEN_LR)
+        optimizer = torch.optim.SGD(model.parameters(), lr=1e-4, momentum=0.9)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5)
-        early_stopping = EarlyStopping(patience=10, min_delta=1e-4)
-        scaler = torch.amp.GradScaler(torch.device(device).type)
+        early_stopping.reset_counter()
+        scaler = torch.amp.GradScaler(torch.device(device).type) if USE_AMP else None
 
         for unfrozen_epoch in range(1, UNFROZEN_MAX_EPOCHS + 1):
             epoch = frozen_epoch + unfrozen_epoch
