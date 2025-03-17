@@ -25,31 +25,32 @@ def main():
     train_loader = torch.utils.data.DataLoader(train_data, **DATALOADER_ARGS)
     val_data = get_imagewoof_dataset(DatasetSplit.VAL)[0]
     val_loader = torch.utils.data.DataLoader(val_data, **DATALOADER_ARGS)
+    criterion = torch.nn.CrossEntropyLoss()
 
-    # print("Original model:")
-    # test_loss, test_acc = val_one_epoch(model, test_loader, torch.nn.CrossEntropyLoss(), device)
-    # print(f"{test_loss=} {test_acc=}")
+    print("Original model:")
+    test_loss, test_acc = val_one_epoch(model, test_loader, criterion, device)
+    print(f"{test_loss=} {test_acc=}")
 
     quantize(model, weights=qint4, activations=qint8)
     print("Calibrating...")
     model.to(device)
     with Calibration():
-        val_one_epoch(model, train_loader, torch.nn.CrossEntropyLoss(), device)
+        val_one_epoch(model, train_loader, criterion, device)
 
     print("Calibrated:")
-    test_loss, test_acc = val_one_epoch(model, test_loader, torch.nn.CrossEntropyLoss(), device)
+    test_loss, test_acc = val_one_epoch(model, test_loader, criterion, device)
     print(f"{test_loss=} {test_acc=}")
 
-    print("Finetuning...")
+    print("Finetuning (Quantization-Aware Training)...")
     optimizer = torch.optim.Adam(model.parameters(), lr=FINETUNE_LR)
     for epoch in range(1, FINETUNE_EPOCH + 1):
         print(f"Epoch {epoch}")
-        train_one_epoch(model, train_loader, torch.nn.CrossEntropyLoss(), optimizer, device)
-        val_one_epoch(model, val_loader, torch.nn.CrossEntropyLoss(), device)
+        train_one_epoch(model, train_loader, criterion, optimizer, device)
+        val_one_epoch(model, val_loader, criterion, device)
 
-    print("Freezed model:")
+    print("Frozen model:")
     freeze(model)
-    test_loss, test_acc = val_one_epoch(model, test_loader, torch.nn.CrossEntropyLoss(), device)
+    test_loss, test_acc = val_one_epoch(model, test_loader, criterion, device)
     print(f"{test_loss=} {test_acc=}")
 
     print("Serializing...")
@@ -65,7 +66,7 @@ def main():
     requantize(model_reloaded, state_dict, q_map, device)
 
     print("Reloaded model:")
-    test_loss, test_acc = val_one_epoch(model_reloaded, test_loader, torch.nn.CrossEntropyLoss(), device)
+    test_loss, test_acc = val_one_epoch(model_reloaded, test_loader, criterion, device)
     print(f"{test_loss=} {test_acc=}")  # TODO: why did performance increase?
 
 
