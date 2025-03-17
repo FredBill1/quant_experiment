@@ -1,10 +1,12 @@
 from typing import TYPE_CHECKING
 
 import torch
+from torch.utils.tensorboard import SummaryWriter
 
 from .config import CWD
 from .data.imagewoof import DatasetSplit, get_imagewoof_dataloader
 from .models import create_model
+from .utils.EarlyStopping import EarlyStopping
 from .utils.training import evaluate, get_device, train_one_epoch
 
 if TYPE_CHECKING:
@@ -12,7 +14,10 @@ if TYPE_CHECKING:
     import torch.nn.intrinsic.qat
 
 
-MODEL = CWD / "runs/Mar16_23-43-58_FredBill/model.pth"
+MODEL = CWD / "runs/mobilnet_v3_large/model.pth"
+
+QAT_MIN_EPOCHS = 10
+QAT_MAX_EPOCHS = 200
 
 
 def main():
@@ -20,7 +25,7 @@ def main():
 
     test_loader = get_imagewoof_dataloader(DatasetSplit.TEST, num_workers=2)
     train_loader = get_imagewoof_dataloader(DatasetSplit.TRAIN, num_workers=6)
-    val_loader = get_imagewoof_dataloader(DatasetSplit.VAL, num_workers=2)
+    val_loader = get_imagewoof_dataloader(DatasetSplit.VAL, num_workers=6)
     criterion = torch.nn.CrossEntropyLoss()
 
     def dynamic() -> None:  #! Note that Conv2d does not support dynamic quantization yet
@@ -34,7 +39,7 @@ def main():
             qconfig_spec=None,
             dtype=torch.quint4x2,
         )
-        torch.save(model_int8.state_dict(), MODEL.with_stem("model_dynamic"))
+        torch.save(model_int8.state_dict(), MODEL.with_stem(MODEL.stem + "_torch_dynamic"))
 
         test_loss, test_acc = evaluate(model_int8, test_loader, criterion, device)
         print(f"{test_loss=} {test_acc=}")
@@ -79,7 +84,7 @@ def main():
         # used with each activation tensor, and replaces key operators with quantized
         # implementations.
         model_int8 = torch.ao.quantization.convert(model_fp32_prepared.to(quant_device))
-        torch.save(model_int8.state_dict(), MODEL.with_stem("model_static"))
+        torch.save(model_int8.state_dict(), MODEL.with_stem(MODEL.stem + "_torch_static"))
 
         print("Evaluated quantized model:")
         test_loss, test_acc = evaluate(model_int8, test_loader, criterion, quant_device)
@@ -116,15 +121,27 @@ def main():
         model_fp32_prepared = torch.ao.quantization.prepare_qat(model_fp32_fused.train())
 
         # run the training loop (not shown)
-        optimizer = torch.optim.Adam(model_fp32_prepared.parameters(), lr=1e-5)
-        for epoch in range(1, 8 + 1):
-            print(f"Epoch {epoch}")
-            if epoch >= 3:
-                model_fp32_prepared.apply(torch.ao.quantization.disable_observer)
-            if epoch >= 2:
-                model_fp32_prepared.apply(torch.nn.intrinsic.qat.freeze_bn_stats)
-            train_one_epoch(model_fp32_prepared, train_loader, criterion, optimizer, device)
-            evaluate(model_fp32_prepared, val_loader, criterion, device)
+        with SummaryWriter(log_dir=MODEL.parent / "qat") as writer:
+            optimizer = torch.optim.SGD(model_fp32_prepared.parameters(), lr=1e-4, momentum=0.9)
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5)
+            early_stopping = EarlyStopping(patience=10)
+            for epoch in range(1, QAT_MAX_EPOCHS + 1):
+                print(f"Epoch {epoch}")
+                if epoch >= 3:
+                    model_fp32_prepared.apply(torch.ao.quantization.disable_observer)
+                if epoch >= 2:
+                    model_fp32_prepared.apply(torch.nn.intrinsic.qat.freeze_bn_stats)
+                train_loss, train_acc = train_one_epoch(model_fp32_prepared, train_loader, criterion, optimizer, device)
+                val_loss, val_acc = evaluate(model_fp32_prepared, val_loader, criterion, device)
+                writer.add_scalar("train/loss", train_loss, epoch)
+                writer.add_scalar("train/accuracy", train_acc, epoch)
+                writer.add_scalar("val/loss", val_loss, epoch)
+                writer.add_scalar("val/accuracy", val_acc, epoch)
+                if early_stopping(val_loss, model_fp32_prepared) and epoch >= QAT_MIN_EPOCHS:
+                    print("Early stopping")
+                    break
+                scheduler.step(val_loss)
+                print(f"Learning rate: {scheduler.get_last_lr()}")
 
         # Convert the observed model to a quantized model. This does several things:
         # quantizes the weights, computes and stores the scale and bias value to be
@@ -132,7 +149,7 @@ def main():
         # and replaces key operators with quantized implementations.
         model_fp32_prepared.eval()
         model_int8 = torch.ao.quantization.convert(model_fp32_prepared.to(quant_device))
-        torch.save(model_int8.state_dict(), MODEL.with_stem("model_qat"))
+        torch.save(model_int8.state_dict(), MODEL.with_stem(MODEL.stem + "_torch_qat"))
 
         # run the model, relevant calculations will happen in int8
         test_loss, test_acc = evaluate(model_int8, test_loader, criterion, quant_device)
