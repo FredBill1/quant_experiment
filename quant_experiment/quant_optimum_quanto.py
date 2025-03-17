@@ -6,7 +6,7 @@ from optimum.quanto import Calibration, freeze, qint4, qint8, quantization_map, 
 from .config import DATALOADER_ARGS
 from .data.imagewoof import DatasetSplit, get_imagewoof_dataset
 from .models.resnet18 import create_model
-from .utils.training import get_device, train_one_epoch, val_one_epoch
+from .utils.training import evaluate, get_device, train_one_epoch
 
 FINETUNE_EPOCH = 5
 FINETUNE_LR = 1e-5
@@ -28,17 +28,17 @@ def main():
     criterion = torch.nn.CrossEntropyLoss()
 
     print("Original model:")
-    test_loss, test_acc = val_one_epoch(model, test_loader, criterion, device)
+    test_loss, test_acc = evaluate(model, test_loader, criterion, device)
     print(f"{test_loss=} {test_acc=}")
 
     quantize(model, weights=qint4, activations=qint8)
     print("Calibrating...")
     model.to(device)
     with Calibration():
-        val_one_epoch(model, train_loader, criterion, device)
+        evaluate(model, train_loader, criterion, device)
 
     print("Calibrated:")
-    test_loss, test_acc = val_one_epoch(model, test_loader, criterion, device)
+    test_loss, test_acc = evaluate(model, test_loader, criterion, device)
     print(f"{test_loss=} {test_acc=}")
 
     print("Finetuning (Quantization-Aware Training)...")
@@ -46,11 +46,11 @@ def main():
     for epoch in range(1, FINETUNE_EPOCH + 1):
         print(f"Epoch {epoch}")
         train_one_epoch(model, train_loader, criterion, optimizer, device)
-        val_one_epoch(model, val_loader, criterion, device)
+        evaluate(model, val_loader, criterion, device)
 
     print("Frozen model:")
     freeze(model)
-    test_loss, test_acc = val_one_epoch(model, test_loader, criterion, device)
+    test_loss, test_acc = evaluate(model, test_loader, criterion, device)
     print(f"{test_loss=} {test_acc=}")
 
     print("Serializing...")
@@ -66,7 +66,7 @@ def main():
     requantize(model_reloaded, state_dict, q_map, device)
 
     print("Reloaded model:")
-    test_loss, test_acc = val_one_epoch(model_reloaded, test_loader, criterion, device)
+    test_loss, test_acc = evaluate(model_reloaded, test_loader, criterion, device)
     print(f"{test_loss=} {test_acc=}")  # TODO: why did performance increase?
 
 

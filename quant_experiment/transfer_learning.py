@@ -8,7 +8,7 @@ from torchinfo import summary
 from .config import DATALOADER_ARGS, IMAGE_SIZE, DatasetSplit
 from .data.imagewoof import get_imagewoof_dataset
 from .models.resnet18 import create_model
-from .utils.training import get_device, train_one_epoch, val_one_epoch
+from .utils.training import evaluate, get_device, train_one_epoch
 
 FROZEN_EPOCHS = 10
 FROZEN_LR = 1e-3
@@ -31,7 +31,7 @@ def main() -> None:
         for epoch in range(1, FROZEN_EPOCHS + 1):
             print(f"Epoch {epoch}")
             train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
-            val_loss, val_acc = val_one_epoch(model, val_loader, criterion, device)
+            val_loss, val_acc = evaluate(model, val_loader, criterion, device)
             writer.add_scalar("train/loss", train_loss, epoch)
             writer.add_scalar("train/accuracy", train_acc, epoch)
             writer.add_scalar("val/loss", val_loss, epoch)
@@ -44,7 +44,7 @@ def main() -> None:
         for epoch in range(FROZEN_EPOCHS + 1, FROZEN_EPOCHS + UNFROZEN_EPOCHS + 1):
             print(f"Epoch {epoch}")
             train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
-            val_loss, val_acc = val_one_epoch(model, val_loader, criterion, device)
+            val_loss, val_acc = evaluate(model, val_loader, criterion, device)
             writer.add_scalar("train/loss", train_loss, epoch)
             writer.add_scalar("train/accuracy", train_acc, epoch)
             writer.add_scalar("val/loss", val_loss, epoch)

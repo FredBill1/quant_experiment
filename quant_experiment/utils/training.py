@@ -37,7 +37,7 @@ def train_one_epoch(
     return loss, accuracy
 
 
-def val_one_epoch(
+def evaluate(
     model: torch.nn.Module,
     val_loader: DataLoader,
     criterion: torch.nn.Module,
@@ -46,7 +46,7 @@ def val_one_epoch(
     model.eval()
     total_loss, total_correct, total_samples = 0.0, 0, 0
     pbar = tqdm(val_loader)
-    with torch.no_grad():
+    with torch.inference_mode():
         for inputs, targets in pbar:
             inputs, targets = inputs.to(device), targets.to(device)
             outputs = model(inputs)
