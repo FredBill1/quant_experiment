@@ -155,8 +155,8 @@ def main():
         test_loss, test_acc = evaluate(model_int8, test_loader, criterion, quant_device)
         print(f"{test_loss=} {test_acc=}")
 
-    # dynamic()
-    # static()
+    dynamic()
+    static()
     qat()
 
 
