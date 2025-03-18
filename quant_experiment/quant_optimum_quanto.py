@@ -2,6 +2,7 @@ import json
 
 import torch
 from optimum.quanto import Calibration, freeze, qint4, qint8, quantization_map, quantize, requantize
+
 from .config import CWD
 from .data.imagewoof import DatasetSplit, get_imagewoof_dataloader
 from .models import create_model
@@ -13,7 +14,7 @@ FINETUNE_LR = 1e-5
 MODEL = CWD / "runs/mobilnet_v3_large/model.pth"
 
 
-def main():
+def main() -> None:
     device = get_device()
 
     model = create_model(from_pretrained=False, frozen=False)

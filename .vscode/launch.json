@@ -36,6 +36,13 @@
             "request": "launch",
             "module": "quant_experiment.quant_torch_eager",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "quant_dorefa",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "quant_experiment.quant_dorefa",
+            "console": "integratedTerminal"
         }
     ]
 }
