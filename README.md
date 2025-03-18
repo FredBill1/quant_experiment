@@ -56,10 +56,17 @@ python -m quant_experiment.transfer_learning
 
 ### 2. Quantization
 
-```bash
-python -m quant_experiment.quant_optimum_quanto
-```
 
 ```bash
 python -m quant_experiment.quant_torch_eager
+```
+
+```bash
+python -m quant_experiment.quant_dorefa
+```
+
+> quanto seems to have bugs, [link](https://github.com/huggingface/optimum-quanto/issues/378)
+
+```bash
+python -m quant_experiment.quant_optimum_quanto
 ```
