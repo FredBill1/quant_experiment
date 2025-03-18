@@ -6,3 +6,4 @@ scikit-learn
 pillow
 optimum-quanto
 tensorboard
+torchinfo
