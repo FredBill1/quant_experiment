@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
-from .config import CWD
+from .config import CWD, IMAGE_SIZE
 from .data.imagewoof import DatasetSplit, get_imagewoof_dataloader
 from .models import create_model
 from .utils.EarlyStopping import EarlyStopping
@@ -155,9 +155,41 @@ def main():
         test_loss, test_acc = evaluate(model_int8, test_loader, criterion, quant_device)
         print(f"{test_loss=} {test_acc=}")
 
-    dynamic()
-    static()
-    qat()
+    def test_static():
+        model = create_model(from_pretrained=False, frozen=False, quantable=True, quantize=False)
+
+        model.qconfig = torch.ao.quantization.get_default_qat_qconfig("x86")
+        quant_device = "cpu"
+        model.eval()
+        model.fuse_model(is_qat=False)
+        torch.ao.quantization.prepare(model, inplace=True)
+        torch.ao.quantization.convert(model, inplace=True)
+
+        model.load_state_dict(torch.load(MODEL.with_stem(MODEL.stem + "_torch_static")))
+        model.to(quant_device)
+        test_loss, test_acc = evaluate(model, test_loader, criterion, quant_device)
+        print(f"{test_loss=} {test_acc=}")
+
+    def test_qat():
+        model = create_model(from_pretrained=False, frozen=False, quantable=True, quantize=False)
+
+        model.qconfig = torch.ao.quantization.get_default_qat_qconfig("x86")
+        quant_device = "cpu"
+        model.eval()
+        model.fuse_model(is_qat=False)
+        torch.ao.quantization.prepare(model, inplace=True)
+        torch.ao.quantization.convert(model, inplace=True)
+
+        model.load_state_dict(torch.load(MODEL.with_stem(MODEL.stem + "_torch_qat")))
+        model.to(quant_device)
+        test_loss, test_acc = evaluate(model, test_loader, criterion, quant_device)
+        print(f"{test_loss=} {test_acc=}")
+
+    # dynamic()
+    # static()
+    # qat()
+    test_static()
+    test_qat()
 
 
 if __name__ == "__main__":
