@@ -158,7 +158,7 @@ def main():
     def test_static():
         model = create_model(from_pretrained=False, frozen=False, quantable=True, quantize=False)
 
-        model.qconfig = torch.ao.quantization.get_default_qat_qconfig("x86")
+        model.qconfig = torch.ao.quantization.get_default_qconfig("x86")
         quant_device = "cpu"
         model.eval()
         model.fuse_model(is_qat=False)
