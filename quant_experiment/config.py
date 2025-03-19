@@ -28,4 +28,7 @@ DATALOADER_ARGS = dict(
     persistent_workers=True,
 )
 
-DEFAULT_MODEL = "mobilenet_v3_large"
+# MODEL_NAME = "mobilenet_v3_large"
+MODEL_NAME = "resnet18"
+
+MODEL_PATH = CWD / f"runs/{MODEL_NAME}/model.pth"

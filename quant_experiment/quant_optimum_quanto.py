@@ -3,7 +3,7 @@ import json
 import torch
 from optimum.quanto import Calibration, freeze, qint4, qint8, quantization_map, quantize, requantize
 
-from .config import CWD
+from .config import MODEL_NAME, MODEL_PATH
 from .data.imagewoof import DatasetSplit, get_imagewoof_dataloader
 from .models import create_model
 from .utils.training import evaluate, get_device, train_one_epoch
@@ -11,14 +11,12 @@ from .utils.training import evaluate, get_device, train_one_epoch
 FINETUNE_EPOCH = 5
 FINETUNE_LR = 1e-5
 
-MODEL = CWD / "runs/mobilnet_v3_large/model.pth"
-
 
 def main() -> None:
     device = get_device()
 
-    model = create_model(from_pretrained=False, frozen=False)
-    model.load_state_dict(torch.load(MODEL))
+    model = create_model(MODEL_NAME, from_pretrained=False, frozen=False)
+    model.load_state_dict(torch.load(MODEL_PATH))
     model.to(device)
 
     test_loader = get_imagewoof_dataloader(DatasetSplit.TEST, num_workers=2)
@@ -53,15 +51,15 @@ def main() -> None:
     print(f"{test_loss=} {test_acc=}")
 
     print("Serializing...")
-    torch.save(model.state_dict(), MODEL.with_stem(MODEL.stem + "_quanto"))
-    with MODEL.with_stem(MODEL.stem + "_quanto").with_suffix(".json").open("w") as f:
+    torch.save(model.state_dict(), MODEL_PATH.with_stem(MODEL_PATH.stem + "_quanto"))
+    with MODEL_PATH.with_stem(MODEL_PATH.stem + "_quanto").with_suffix(".json").open("w") as f:
         json.dump(quantization_map(model), f)
 
     print("Deserializing...")
-    state_dict = torch.load(MODEL.with_stem(MODEL.stem + "_quanto"))
-    with MODEL.with_stem(MODEL.stem + "_quanto").with_suffix(".json").open() as f:
+    state_dict = torch.load(MODEL_PATH.with_stem(MODEL_PATH.stem + "_quanto"))
+    with MODEL_PATH.with_stem(MODEL_PATH.stem + "_quanto").with_suffix(".json").open() as f:
         q_map = json.load(f)
-    model_reloaded = create_model(from_pretrained=False, frozen=False)
+    model_reloaded = create_model(MODEL_NAME, from_pretrained=False, frozen=False)
     requantize(model_reloaded, state_dict, q_map, device)
 
     print("Reloaded model:")

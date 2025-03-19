@@ -1,6 +1,6 @@
 import torch
 
-from ..config import DEFAULT_MODEL
+from ..config import MODEL_NAME
 from .mobilenet_v3_large import create_model as create_mobilenet_v3_large
 from .resnet18 import create_model as create_resnet18
 
@@ -11,7 +11,7 @@ MAPPING = {
 
 
 def create_model(
-    name: str = DEFAULT_MODEL,
+    name: str = MODEL_NAME,
     *,
     from_pretrained: bool = False,
     frozen: bool = False,

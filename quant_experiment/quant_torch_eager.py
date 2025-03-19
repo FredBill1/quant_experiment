@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
-from .config import CWD
+from .config import MODEL_NAME, MODEL_PATH
 from .data.imagewoof import DatasetSplit, get_imagewoof_dataloader
 from .models import create_model
 from .utils.EarlyStopping import EarlyStopping
@@ -13,8 +13,6 @@ if TYPE_CHECKING:
     import torch.ao.quantization
     import torch.nn.intrinsic.qat
 
-
-MODEL = CWD / "runs/mobilnet_v3_large/model.pth"
 
 QAT_MIN_EPOCHS = 10
 QAT_MAX_EPOCHS = 200
@@ -30,8 +28,8 @@ def main():
 
     def dynamic() -> None:  #! Note that Conv2d does not support dynamic quantization yet
         print("Dynamic quantization")
-        model_fp32 = create_model(from_pretrained=False, frozen=False, quantable=True, quantize=False)
-        model_fp32.load_state_dict(torch.load(MODEL))
+        model_fp32 = create_model(MODEL_NAME, from_pretrained=False, frozen=False, quantable=True, quantize=False)
+        model_fp32.load_state_dict(torch.load(MODEL_PATH))
         model_fp32.to(device)
 
         model_int8 = torch.ao.quantization.quantize_dynamic(
@@ -39,15 +37,15 @@ def main():
             qconfig_spec=None,
             dtype=torch.quint4x2,
         )
-        torch.save(model_int8.state_dict(), MODEL.with_stem(MODEL.stem + "_torch_dynamic"))
+        torch.save(model_int8.state_dict(), MODEL_PATH.with_stem(MODEL_PATH.stem + "_torch_dynamic"))
 
         test_loss, test_acc = evaluate(model_int8, test_loader, criterion, device)
         print(f"{test_loss=} {test_acc=}")
 
     def static() -> None:
         print("Static quantization")
-        model_fp32 = create_model(from_pretrained=False, frozen=False, quantable=True, quantize=False)
-        model_fp32.load_state_dict(torch.load(MODEL))
+        model_fp32 = create_model(MODEL_NAME, from_pretrained=False, frozen=False, quantable=True, quantize=False)
+        model_fp32.load_state_dict(torch.load(MODEL_PATH))
         model_fp32.to(device)
 
         # model must be set to eval mode for static quantization logic to work
@@ -84,7 +82,7 @@ def main():
         # used with each activation tensor, and replaces key operators with quantized
         # implementations.
         model_int8 = torch.ao.quantization.convert(model_fp32_prepared.to(quant_device))
-        torch.save(model_int8.state_dict(), MODEL.with_stem(MODEL.stem + "_torch_static"))
+        torch.save(model_int8.state_dict(), MODEL_PATH.with_stem(MODEL_PATH.stem + "_torch_static"))
 
         print("Evaluated quantized model:")
         test_loss, test_acc = evaluate(model_int8, test_loader, criterion, quant_device)
@@ -92,8 +90,8 @@ def main():
 
     def qat() -> None:
         print("Quantization Aware Training")
-        model_fp32 = create_model(from_pretrained=False, frozen=False, quantable=True, quantize=False)
-        model_fp32.load_state_dict(torch.load(MODEL))
+        model_fp32 = create_model(MODEL_NAME, from_pretrained=False, frozen=False, quantable=True, quantize=False)
+        model_fp32.load_state_dict(torch.load(MODEL_PATH))
         model_fp32.to(device)
 
         # model must be set to eval for fusion to work
@@ -121,7 +119,7 @@ def main():
         model_fp32_prepared = torch.ao.quantization.prepare_qat(model_fp32_fused.train())
 
         # run the training loop (not shown)
-        with SummaryWriter(log_dir=MODEL.parent / "qat") as writer:
+        with SummaryWriter(log_dir=MODEL_PATH.parent / "qat") as writer:
             optimizer = torch.optim.SGD(model_fp32_prepared.parameters(), lr=1e-4, momentum=0.9)
             scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5)
             early_stopping = EarlyStopping(patience=10)
@@ -149,14 +147,14 @@ def main():
         # and replaces key operators with quantized implementations.
         model_fp32_prepared.eval()
         model_int8 = torch.ao.quantization.convert(model_fp32_prepared.to(quant_device))
-        torch.save(model_int8.state_dict(), MODEL.with_stem(MODEL.stem + "_torch_qat"))
+        torch.save(model_int8.state_dict(), MODEL_PATH.with_stem(MODEL_PATH.stem + "_torch_qat"))
 
         # run the model, relevant calculations will happen in int8
         test_loss, test_acc = evaluate(model_int8, test_loader, criterion, quant_device)
         print(f"{test_loss=} {test_acc=}")
 
     def test_static():
-        model = create_model(from_pretrained=False, frozen=False, quantable=True, quantize=False)
+        model = create_model(MODEL_NAME, from_pretrained=False, frozen=False, quantable=True, quantize=False)
 
         model.qconfig = torch.ao.quantization.get_default_qconfig("x86")
         quant_device = "cpu"
@@ -165,13 +163,13 @@ def main():
         torch.ao.quantization.prepare(model, inplace=True)
         torch.ao.quantization.convert(model, inplace=True)
 
-        model.load_state_dict(torch.load(MODEL.with_stem(MODEL.stem + "_torch_static")))
+        model.load_state_dict(torch.load(MODEL_PATH.with_stem(MODEL_PATH.stem + "_torch_static")))
         model.to(quant_device)
         test_loss, test_acc = evaluate(model, test_loader, criterion, quant_device)
         print(f"{test_loss=} {test_acc=}")
 
     def test_qat():
-        model = create_model(from_pretrained=False, frozen=False, quantable=True, quantize=False)
+        model = create_model(MODEL_NAME, from_pretrained=False, frozen=False, quantable=True, quantize=False)
 
         model.qconfig = torch.ao.quantization.get_default_qat_qconfig("x86")
         quant_device = "cpu"
@@ -180,7 +178,7 @@ def main():
         torch.ao.quantization.prepare(model, inplace=True)
         torch.ao.quantization.convert(model, inplace=True)
 
-        model.load_state_dict(torch.load(MODEL.with_stem(MODEL.stem + "_torch_qat")))
+        model.load_state_dict(torch.load(MODEL_PATH.with_stem(MODEL_PATH.stem + "_torch_qat")))
         model.to(quant_device)
         test_loss, test_acc = evaluate(model, test_loader, criterion, quant_device)
         print(f"{test_loss=} {test_acc=}")

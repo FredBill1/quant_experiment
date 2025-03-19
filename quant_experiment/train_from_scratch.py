@@ -4,7 +4,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary
 
-from .config import IMAGE_SIZE, DatasetSplit
+from .config import IMAGE_SIZE, MODEL_NAME, DatasetSplit
 from .data.imagewoof import get_imagewoof_dataloader
 from .models import create_model
 from .utils.EarlyStopping import EarlyStopping
@@ -17,7 +17,7 @@ MAX_EPOCHS = 500
 
 def main() -> None:
     device = get_device()
-    model = create_model(from_pretrained=False, frozen=False)
+    model = create_model(MODEL_NAME, from_pretrained=False, frozen=False)
     model.to(device)
     summary(model, input_size=(1, 3, IMAGE_SIZE, IMAGE_SIZE))
 

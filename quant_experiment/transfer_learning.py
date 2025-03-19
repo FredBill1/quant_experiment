@@ -4,7 +4,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary
 
-from .config import IMAGE_SIZE, DatasetSplit
+from .config import CWD, IMAGE_SIZE, MODEL_NAME, DatasetSplit
 from .data.imagewoof import get_imagewoof_dataloader
 from .models import create_model
 from .utils.EarlyStopping import EarlyStopping
@@ -20,7 +20,7 @@ USE_AMP = True
 
 def main() -> None:
     device = get_device()
-    model = create_model(from_pretrained=True, frozen=True)
+    model = create_model(MODEL_NAME, from_pretrained=True, frozen=True)
     model.to(device)
     summary(model, input_size=(1, 3, IMAGE_SIZE, IMAGE_SIZE))
 
@@ -28,7 +28,7 @@ def main() -> None:
 
     train_loader = get_imagewoof_dataloader(DatasetSplit.TRAIN, num_workers=6)
     val_loader = get_imagewoof_dataloader(DatasetSplit.VAL, num_workers=6)
-    with SummaryWriter() as writer:
+    with SummaryWriter(str(CWD / f"runs/{MODEL_NAME}")) as writer:
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5)
         early_stopping = EarlyStopping(patience=10)

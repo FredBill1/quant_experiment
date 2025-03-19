@@ -2,15 +2,13 @@ import matplotlib.pyplot as plt
 import torch
 from tqdm import tqdm
 
-from .config import CWD
+from .config import MODEL_NAME, MODEL_PATH
 from .models import create_model
-
-MODEL = CWD / "runs/mobilnet_v3_large/model.pth"
 
 
 def main() -> None:
-    model = create_model(from_pretrained=False, frozen=False)
-    model.load_state_dict(torch.load(MODEL))
+    model = create_model(MODEL_NAME, from_pretrained=False, frozen=False)
+    model.load_state_dict(torch.load(MODEL_PATH))
 
     params = list(model.named_parameters())
 
@@ -22,7 +20,7 @@ def main() -> None:
         ax.set_title(name)
 
     fig.tight_layout()
-    fig.savefig(MODEL.with_name(MODEL.stem + "_params.png"))
+    fig.savefig(MODEL_PATH.with_name(MODEL_PATH.stem + "_params.png"))
 
 
 if __name__ == "__main__":
