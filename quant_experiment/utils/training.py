@@ -15,10 +15,11 @@ def train_one_epoch(
     train_loader: DataLoader,
     criterion: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
-    device: torch.device,
+    device: str,
     *,
     scaler: Optional[torch.amp.GradScaler] = None,
 ) -> tuple[float, float]:
+    model.to(device)
     model.train()
     total_loss, total_correct, total_samples = 0.0, 0, 0
     pbar = tqdm(train_loader)
@@ -52,8 +53,9 @@ def evaluate(
     model: torch.nn.Module,
     val_loader: DataLoader,
     criterion: torch.nn.Module,
-    device: torch.device,
+    device: str,
 ) -> tuple[float, float]:
+    model.to(device)
     model.eval()
     total_loss, total_correct, total_samples = 0.0, 0, 0
     pbar = tqdm(val_loader)
