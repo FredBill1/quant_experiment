@@ -1,8 +1,11 @@
 """
 Downloaded and modified from https://github.com/alibaba/MNN/blob/b3c288d212a74822f463e0733da1b495c6e1c256/tools/mnncompress/mnncompress/pytorch/decomposition.py
+
+Adapted the CP decomposition from https://github.com/ruihangdu/Decompose-CNN/blob/864648fa24e6cd70c65e6ae5bb4541de362453fe/scripts/torch_cp_decomp.py
 """
 
 from copy import deepcopy
+from enum import StrEnum, auto
 from pprint import pp
 
 import numpy as np
@@ -10,7 +13,7 @@ import scipy
 import tensorly as tl
 import torch
 import torch.nn as nn
-from tensorly.decomposition import partial_tucker
+from tensorly.decomposition import parafac, partial_tucker
 
 from .VBMF import EVBMF
 
@@ -50,13 +53,19 @@ def get_align_channels(value, max_value, align_channels, minimal_ratio=0.0):
     return res
 
 
+class DecomposeMethod(StrEnum):
+    TUCKER = auto()
+    CP = auto()
+
+
 def low_rank_decompose(
     model: nn.Module,
     skip_layers: set[str] = set(),
     align_channels: int = 8,
     in_place: bool = False,
-    tucker_minimal_ratio: float = 0.25,
+    tucker_cp_minimal_ratio: float = 0.25,
     reserved_singular_value_ratio: float = 0.5,
+    decompose_method: DecomposeMethod = DecomposeMethod.TUCKER,
 ) -> nn.Module:
     """
     Parameters:
@@ -64,12 +73,14 @@ def low_rank_decompose(
         skip_layers: set[str], names of layers to skip decomposition, must be nn.Conv2d or nn.Linear type, e.g. {"features.conv1"}
         align_channels: int, multiplier for channel alignment after decomposition
         in_place: whether to use the original model's memory space; if False, a deep copy of the original model will be made
-        tucker_minimal_ratio: float 0~1, minimum ratio of channels to retain in tucker decomposition of convolutional layers
+        tucker_cp_minimal_ratio: float 0~1, minimum ratio of channels to retain in tucker/cp decomposition of convolutional layers
         reserved_singular_value_ratio: ratio of sum of preserved singular values to the total sum in SVD decomposition
 
     Returns:
         The decomposed model, an nn.Module instance
     """
+    tl.set_backend("pytorch")
+
     origin_params_num = get_module_parameter_num(model)
     decompose_model = model
     if not in_place:
@@ -88,7 +99,7 @@ def low_rank_decompose(
                     continue
 
                 if isinstance(m, nn.Conv2d) and m.groups == 1 and m.kernel_size != (1, 1):
-                    weight = m.weight.data.detach().cpu().numpy()
+                    weight = m.weight.data.detach()
 
                     if m.in_channels <= align_channels or m.out_channels <= align_channels:
                         print("skip tucker for:", m_name, "weight shape:", weight.shape)
@@ -96,28 +107,36 @@ def low_rank_decompose(
 
                     u0 = tl.base.unfold(weight, 0)
                     u1 = tl.base.unfold(weight, 1)
-                    res0 = EVBMF(u0)
-                    res1 = EVBMF(u1)
-                    rank0 = get_align_channels(res0[1].shape[0], m.out_channels, align_channels, tucker_minimal_ratio)
-                    rank1 = get_align_channels(res1[1].shape[1], m.in_channels, align_channels, tucker_minimal_ratio)
+                    res0 = EVBMF(u0.cpu().numpy())
+                    res1 = EVBMF(u1.cpu().numpy())
+                    rank0 = get_align_channels(res0[1].shape[0], m.out_channels, align_channels, tucker_cp_minimal_ratio)
+                    rank1 = get_align_channels(res1[1].shape[1], m.in_channels, align_channels, tucker_cp_minimal_ratio)
                     ranks = [rank0, rank1]
 
-                    (core, [last, first]), _rec_errors = partial_tucker(weight, modes=[0, 1], rank=ranks, init="svd")
-                    print("tucker for", m_name, ":", [m.in_channels, m.out_channels], "<===>", [core.shape[1], core.shape[0]], "ranks:", ranks)
+                    match decompose_method:
+                        case DecomposeMethod.TUCKER:
+                            (core, [last, first]), _rec_errors = partial_tucker(weight, modes=[0, 1], rank=ranks, init="svd")
+                            core_out, core_in = core.shape[:2]
+                            print(f"tucker for {m_name}: {[m.in_channels, m.out_channels]} <===> {[core.shape[0], core.shape[1]]} ranks: {ranks}")
+                        case DecomposeMethod.CP:
+                            rank = max(ranks)
+                            last, first, vertical, horizontal = parafac(weight, rank=rank, init="random")[1]
+                            core = torch.stack([vertical.narrow(1, i, 1) @ torch.t(horizontal).narrow(0, i, 1) for i in range(rank)]).unsqueeze_(1)
+                            core_out = core_in = rank
+                            print(f"cp for {m_name}: {[m.in_channels, m.out_channels]} <===> {[core.shape[0], core.shape[1]]} rank: {rank}")
 
-                    has_bias = True
-                    if m.bias is None:
-                        has_bias = False
+                    has_bias = m.bias is not None
 
                     first_layer = nn.Conv2d(in_channels=first.shape[0], out_channels=first.shape[1], kernel_size=1, stride=1, padding=0, bias=False)
 
                     core_layer = nn.Conv2d(
-                        in_channels=core.shape[1],
-                        out_channels=core.shape[0],
+                        in_channels=core_in,
+                        out_channels=core_out,
                         kernel_size=m.kernel_size,
                         stride=m.stride,
                         padding=m.padding,
                         dilation=m.dilation,
+                        groups=1 if decompose_method == DecomposeMethod.TUCKER else rank,
                         bias=False,
                     )
 
@@ -126,9 +145,9 @@ def low_rank_decompose(
                     if has_bias:
                         last_layer.bias.data = m.bias.data
 
-                    first_layer.weight.data = torch.transpose(torch.Tensor(first.copy()), 1, 0).unsqueeze(-1).unsqueeze(-1)
-                    last_layer.weight.data = torch.Tensor(last.copy()).unsqueeze(-1).unsqueeze(-1)
-                    core_layer.weight.data = torch.Tensor(core.copy())
+                    first_layer.weight.data = torch.transpose(first, 1, 0).unsqueeze(-1).unsqueeze(-1)
+                    last_layer.weight.data = last.unsqueeze(-1).unsqueeze(-1)
+                    core_layer.weight.data = core
 
                     # first_bn = nn.BatchNorm2d(first_layer.out_channels)
                     # core_bn = nn.BatchNorm2d(core_layer.out_channels)
@@ -167,9 +186,7 @@ def low_rank_decompose(
                             break
                     n_dim = get_align_channels(n_dim, s.size, align_channels)
 
-                    has_bias = True
-                    if m.bias is None:
-                        has_bias = False
+                    has_bias = m.bias is not None
 
                     if isinstance(m, nn.Conv2d):
                         print("svd for", m_name, ":", [m.in_channels, m.out_channels], "<===>", [m.in_channels, n_dim, m.out_channels])
@@ -184,8 +201,8 @@ def low_rank_decompose(
                         fc1 = nn.Linear(m.in_features, n_dim, bias=False)
                         fc2 = nn.Linear(n_dim, m.out_features, bias=has_bias)
 
-                    fc1.weight.data = torch.Tensor(fc1_weight.copy())
-                    fc2.weight.data = torch.Tensor(fc2_weight.copy())
+                    fc1.weight.data = torch.Tensor(fc1_weight)
+                    fc2.weight.data = torch.Tensor(fc2_weight)
 
                     if has_bias:
                         fc2.bias.data = m.bias.data
@@ -193,8 +210,6 @@ def low_rank_decompose(
                     decomposed_layers = [fc1, fc2]
                     setattr(module, n, nn.Sequential(*decomposed_layers))
                     continue
-
-                print("skip decomposition:", m_name)
 
     _decompose_module(decompose_model)
 
@@ -207,7 +222,7 @@ def low_rank_decompose(
         "config": {
             "skip_layers": skip_layers,
             "align_channels": align_channels,
-            "tucker_minimal_ratio": tucker_minimal_ratio,
+            "tucker_minimal_ratio": tucker_cp_minimal_ratio,
             "reserved_singular_value_ratio": reserved_singular_value_ratio,
         },
     }
