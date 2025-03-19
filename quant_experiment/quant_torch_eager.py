@@ -127,9 +127,9 @@ def main():
             early_stopping = EarlyStopping(patience=10)
             for epoch in range(1, QAT_MAX_EPOCHS + 1):
                 print(f"Epoch {epoch}")
-                if epoch == 3:
+                if epoch >= 3:
                     model_fp32_prepared.apply(torch.ao.quantization.disable_observer)
-                if epoch == 2:
+                if epoch >= 2:
                     model_fp32_prepared.apply(torch.nn.intrinsic.qat.freeze_bn_stats)
                 train_loss, train_acc = train_one_epoch(model_fp32_prepared, train_loader, criterion, optimizer, device)
                 val_loss, val_acc = evaluate(model_fp32_prepared, val_loader, criterion, device)
