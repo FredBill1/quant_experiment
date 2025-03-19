@@ -1,8 +1,8 @@
 import torch
-from mnncompress.pytorch import low_rank_decompose
 
 from .config import MODEL_NAME, MODEL_PATH
 from .data.imagewoof import DatasetSplit, get_imagewoof_dataloader
+from .methods.low_rank_decompose.low_rank_decompose import low_rank_decompose
 from .models import create_model
 from .utils.training import evaluate, get_device
 
@@ -18,7 +18,6 @@ def main() -> None:
 
     low_rank_decompose(
         model,
-        str(MODEL_PATH.with_name(MODEL_PATH.stem + "_low_rank_decompose.proto")),
         align_channels=8,
         tucker_minimal_ratio=0.9,
         reserved_singular_value_ratio=0.9,

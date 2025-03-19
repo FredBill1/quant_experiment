@@ -7,8 +7,5 @@ pillow
 optimum-quanto
 tensorboard
 torchinfo
-
-# requirements for mnncompress
-mnncompress==0.3.2
-protobuf<3.21.0
-onnx
+scipy
+tensorly
