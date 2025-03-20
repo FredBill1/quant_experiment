@@ -1,15 +1,16 @@
 """
 Downloaded and modified from https://github.com/alibaba/MNN/blob/b3c288d212a74822f463e0733da1b495c6e1c256/tools/mnncompress/mnncompress/pytorch/decomposition.py
 
+Changed to use PyTorch backend and utilize GPU for decomposition computations.
+
 Adapted the CP decomposition from https://github.com/ruihangdu/Decompose-CNN/blob/864648fa24e6cd70c65e6ae5bb4541de362453fe/scripts/torch_cp_decomp.py
 """
 
 from copy import deepcopy
 from enum import StrEnum, auto
-from pprint import pp
 
 import numpy as np
-import scipy
+import scipy.linalg
 import tensorly as tl
 import torch
 import torch.nn as nn
@@ -81,7 +82,6 @@ def low_rank_decompose(
     """
     tl.set_backend("pytorch")
 
-    origin_params_num = get_module_parameter_num(model)
     decompose_model = model
     if not in_place:
         decompose_model = deepcopy(model)
@@ -212,21 +212,4 @@ def low_rank_decompose(
                     continue
 
     _decompose_module(decompose_model)
-
-    decompose_model_params_num = get_module_parameter_num(decompose_model)
-
-    detail = {
-        "algorithm": "low_rank_decompose",
-        "compression_rate": origin_params_num / decompose_model_params_num,
-        "ori_model_size": origin_params_num * 4.0 / 1024.0 / 1024.0,
-        "config": {
-            "skip_layers": skip_layers,
-            "align_channels": align_channels,
-            "tucker_minimal_ratio": tucker_cp_minimal_ratio,
-            "reserved_singular_value_ratio": reserved_singular_value_ratio,
-        },
-    }
-
-    pp(detail)
-
     return decompose_model
