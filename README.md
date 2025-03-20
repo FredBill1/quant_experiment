@@ -70,3 +70,14 @@ python -m quant_experiment.quant_dorefa
 ```bash
 python -m quant_experiment.quant_optimum_quanto
 ```
+
+# 量化可以调的超参数
+
+Pytorch官方只支持均匀量化
+
+可以分别设置对于权重(Weight)和激活(Activation)的量化参数，包括：
+
+1. 使用哪种Observer（用于统计Tensor的数据分布的算法，用于确定均匀量化的min-max范围），包括MinMaxObserver、HistogramObserver、MovingAverageMinMaxObserver和它们对应的PerChannel版本
+2. 量化的粒度，包括per-tensor和per-channel（没有全局量化）
+3. 量化的数据类型，包括float16、int8、int4等
+4. 选择使用对称量化或非对称量化

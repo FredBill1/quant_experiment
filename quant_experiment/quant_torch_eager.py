@@ -30,16 +30,20 @@ def main():
         print("Dynamic quantization")
         model_fp32 = create_model(MODEL_NAME, from_pretrained=False, frozen=False, quantable=True, quantize=False)
         model_fp32.load_state_dict(torch.load(MODEL_PATH))
-        model_fp32.to(device)
+        quant_device = "cpu"  # `does not support GPU yet
+        model_fp32.to(quant_device)
 
         model_int8 = torch.ao.quantization.quantize_dynamic(
             model_fp32,
-            qconfig_spec=None,
-            dtype=torch.quint4x2,
+            qconfig_spec={
+                torch.nn.Linear: torch.ao.quantization.default_dynamic_qconfig,
+                # torch.nn.Conv2d: torch.ao.quantization.default_dynamic_qconfig,  # not supported
+            },
+            dtype=torch.qint8,
         )
         torch.save(model_int8.state_dict(), MODEL_PATH.with_stem(MODEL_PATH.stem + "_torch_dynamic"))
 
-        test_loss, test_acc = evaluate(model_int8, test_loader, criterion, device)
+        test_loss, test_acc = evaluate(model_int8, test_loader, criterion, quant_device)
         print(f"{test_loss=} {test_acc=}")
 
     def static() -> None:
@@ -183,11 +187,11 @@ def main():
         test_loss, test_acc = evaluate(model, test_loader, criterion, quant_device)
         print(f"{test_loss=} {test_acc=}")
 
-    # dynamic()
+    dynamic()
     # static()
     # qat()
-    test_static()
-    test_qat()
+    # test_static()
+    # test_qat()
 
 
 if __name__ == "__main__":
