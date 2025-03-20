@@ -115,7 +115,14 @@ def low_rank_decompose(
 
                     match decompose_method:
                         case DecomposeMethod.TUCKER:
-                            (core, [last, first]), _rec_errors = partial_tucker(weight, modes=[0, 1], rank=ranks, init="svd")
+                            ret = partial_tucker(weight, modes=[0, 1], rank=ranks, init="svd")
+
+                            # there is a change in return type of partial_tucker in tensorly
+                            try:
+                                (core, (last, first)), _rec_errors = ret
+                            except ValueError:
+                                core, (last, first) = ret
+
                             core_out, core_in = core.shape[:2]
                             print(f"tucker for {m_name}: {[m.in_channels, m.out_channels]} <===> {[core.shape[0], core.shape[1]]} ranks: {ranks}")
                         case DecomposeMethod.CP:
