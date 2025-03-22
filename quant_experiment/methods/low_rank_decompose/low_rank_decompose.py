@@ -224,11 +224,13 @@ def low_rank_decompose(
                 match decompose_method:
                     case DecomposeMethod.TUCKER:
                         conversions[m_name] = ranks
+                        print("tucker for", m_name, ":", [m.in_channels, m.out_channels], "<===>", ranks[::-1])
                         decomposed_layers = tucker_decompose(m, ranks, weight)
                     case DecomposeMethod.CP:
                         rank = max(ranks)
                         conversions[m_name] = rank
                         decomposed_layers = cp_decompose(m, rank, weight)
+                        print("cp for", m_name, ":", [m.in_channels, m.out_channels], "<===>", rank)
 
                 setattr(module, n, decomposed_layers)
                 continue
