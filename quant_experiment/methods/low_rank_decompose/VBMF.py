@@ -1,5 +1,7 @@
 """
 Downloaded from: https://github.com/alibaba/MNN/blob/b3c288d212a74822f463e0733da1b495c6e1c256/tools/mnncompress/mnncompress/common/VBMF.py
+
+Likely came from: https://github.com/CasvandenBogaard/VBMF/blob/92b5e34b5c44313c31eb6d3a2d063ee4ff256a3e/VBMF.py
 """
 
 from __future__ import print_function
