@@ -3,13 +3,14 @@ Downloaded and modified from https://github.com/alibaba/MNN/blob/b3c288d212a7482
 
 Changed to use PyTorch backend and utilize GPU for decomposition computations.
 
-Adapted the CP decomposition from https://github.com/ruihangdu/Decompose-CNN/blob/864648fa24e6cd70c65e6ae5bb4541de362453fe/scripts/torch_cp_decomp.py
+Adapted the CP decomposition from https://github.com/jacobgil/pytorch-tensor-decompositions/blob/aca536ffacbd04be39d5a527dc2dafb9ac6a69df/decompositions.py
 
 Added saving and loading rank information for redecomposition.
 """
 
 from copy import deepcopy
 from enum import StrEnum, auto
+from typing import Optional
 
 import numpy as np
 import scipy.linalg
@@ -59,6 +60,112 @@ def get_align_channels(value, max_value, align_channels, minimal_ratio=0.0):
 class DecomposeMethod(StrEnum):
     TUCKER = auto()
     CP = auto()
+
+
+def tucker_decompose(m: nn.Conv2d, ranks: list[int], weight: Optional[torch.Tensor]) -> nn.Module:
+    has_bias = m.bias is not None
+
+    first_layer = nn.Conv2d(
+        in_channels=m.in_channels,
+        out_channels=ranks[1],
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        bias=False,
+    )
+
+    core_layer = nn.Conv2d(
+        in_channels=ranks[1],
+        out_channels=ranks[0],
+        kernel_size=m.kernel_size,
+        stride=m.stride,
+        padding=m.padding,
+        dilation=m.dilation,
+        bias=False,
+    )
+
+    last_layer = nn.Conv2d(
+        in_channels=ranks[0],
+        out_channels=m.out_channels,
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        bias=has_bias,
+    )
+
+    if weight is not None:
+        if has_bias:
+            last_layer.bias.data = m.bias.data
+
+        ret = partial_tucker(weight, modes=[0, 1], rank=ranks, init="svd")
+        # there is a change in return type of partial_tucker in tensorly
+        try:
+            (core, (last, first)), _rec_errors = ret
+        except ValueError:
+            core, (last, first) = ret
+
+        first_layer.weight.data = torch.transpose(first, 1, 0).unsqueeze(-1).unsqueeze(-1)
+        last_layer.weight.data = last.unsqueeze(-1).unsqueeze(-1)
+        core_layer.weight.data = core
+
+    return nn.Sequential(first_layer, core_layer, last_layer)
+
+
+def cp_decompose(m: nn.Conv2d, rank: int, weight: Optional[torch.Tensor]) -> nn.Module:
+    has_bias = m.bias is not None
+
+    pointwise_s_to_r_layer = torch.nn.Conv2d(
+        in_channels=m.in_channels,
+        out_channels=rank,
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        bias=False,
+    )
+
+    depthwise_vertical_layer = torch.nn.Conv2d(
+        in_channels=rank,
+        out_channels=rank,
+        kernel_size=(m.kernel_size[0], 1),
+        stride=(m.stride[0], 1),
+        padding=(m.padding[0], 0),
+        dilation=(m.dilation[0], 1),
+        groups=rank,
+        bias=False,
+    )
+
+    depthwise_horizontal_layer = torch.nn.Conv2d(
+        in_channels=rank,
+        out_channels=rank,
+        kernel_size=(1, m.kernel_size[1]),
+        stride=(1, m.stride[1]),
+        padding=(0, m.padding[1]),
+        dilation=(1, m.dilation[1]),
+        groups=rank,
+        bias=False,
+    )
+
+    pointwise_r_to_t_layer = torch.nn.Conv2d(
+        in_channels=rank,
+        out_channels=m.out_channels,
+        kernel_size=1,
+        stride=1,
+        padding=0,
+        bias=has_bias,
+    )
+
+    if weight is not None:
+        if has_bias:
+            pointwise_r_to_t_layer.bias.data = m.bias.data
+
+        weight = m.weight.data.detach()
+        last, first, vertical, horizontal = parafac(weight, rank=rank, init="random")[1]
+        pointwise_s_to_r_layer.weight.data = torch.transpose(first, 1, 0).unsqueeze(-1).unsqueeze(-1)
+        depthwise_vertical_layer.weight.data = torch.transpose(vertical, 1, 0).unsqueeze(1).unsqueeze(-1)
+        depthwise_horizontal_layer.weight.data = torch.transpose(horizontal, 1, 0).unsqueeze(1).unsqueeze(1)
+        pointwise_r_to_t_layer.weight.data = last.unsqueeze(-1).unsqueeze(-1)
+
+    return nn.Sequential(pointwise_s_to_r_layer, depthwise_vertical_layer, depthwise_horizontal_layer, pointwise_r_to_t_layer)
 
 
 def low_rank_decompose(
@@ -116,65 +223,14 @@ def low_rank_decompose(
 
                 match decompose_method:
                     case DecomposeMethod.TUCKER:
-                        ret = partial_tucker(weight, modes=[0, 1], rank=ranks, init="svd")
-
-                        # there is a change in return type of partial_tucker in tensorly
-                        try:
-                            (core, (last, first)), _rec_errors = ret
-                        except ValueError:
-                            core, (last, first) = ret
-
-                        core_out, core_in = core.shape[:2]
-                        print(f"tucker for {m_name}: {[m.in_channels, m.out_channels]} <===> {[core.shape[0], core.shape[1]]} ranks: {ranks}")
+                        conversions[m_name] = ranks
+                        decomposed_layers = tucker_decompose(m, ranks, weight)
                     case DecomposeMethod.CP:
                         rank = max(ranks)
-                        last, first, vertical, horizontal = parafac(weight, rank=rank, init="random")[1]
-                        core = torch.stack([vertical.narrow(1, i, 1) @ torch.t(horizontal).narrow(0, i, 1) for i in range(rank)]).unsqueeze_(1)
-                        core_out = core_in = rank
-                        print(f"cp for {m_name}: {[m.in_channels, m.out_channels]} <===> {[core.shape[0], core.shape[1]]} rank: {rank}")
+                        conversions[m_name] = rank
+                        decomposed_layers = cp_decompose(m, rank, weight)
 
-                has_bias = m.bias is not None
-
-                first_layer = nn.Conv2d(
-                    in_channels=first.shape[0],
-                    out_channels=first.shape[1],
-                    kernel_size=1,
-                    stride=1,
-                    padding=0,
-                    bias=False,
-                )
-
-                core_layer = nn.Conv2d(
-                    in_channels=core_in,
-                    out_channels=core_out,
-                    kernel_size=m.kernel_size,
-                    stride=m.stride,
-                    padding=m.padding,
-                    dilation=m.dilation,
-                    groups=1 if decompose_method == DecomposeMethod.TUCKER else rank,
-                    bias=False,
-                )
-
-                last_layer = nn.Conv2d(
-                    in_channels=last.shape[1],
-                    out_channels=last.shape[0],
-                    kernel_size=1,
-                    stride=1,
-                    padding=0,
-                    bias=has_bias,
-                )
-
-                conversions[m_name] = [core_in, core_out]
-
-                if has_bias:
-                    last_layer.bias.data = m.bias.data
-
-                first_layer.weight.data = torch.transpose(first, 1, 0).unsqueeze(-1).unsqueeze(-1)
-                last_layer.weight.data = last.unsqueeze(-1).unsqueeze(-1)
-                core_layer.weight.data = core
-
-                decomposed_layers = [first_layer, core_layer, last_layer]
-                setattr(module, n, nn.Sequential(*decomposed_layers))
+                setattr(module, n, decomposed_layers)
                 continue
 
             if isinstance(m, nn.Linear) or (
@@ -263,39 +319,15 @@ def redecompose(model: nn.Module, config: dict, inplace: bool = False) -> nn.Mod
                 continue
 
             if isinstance(m, nn.Conv2d) and m.groups == 1 and m.kernel_size != (1, 1):
-                core_in, core_out = conversion
+                ranks = conversion
 
-                first_layer = nn.Conv2d(
-                    in_channels=m.in_channels,
-                    out_channels=core_in,
-                    kernel_size=1,
-                    stride=1,
-                    padding=0,
-                    bias=False,
-                )
+                match decompose_method:
+                    case DecomposeMethod.TUCKER:
+                        decomposed_layers = tucker_decompose(m, ranks, None)
+                    case DecomposeMethod.CP:
+                        decomposed_layers = cp_decompose(m, ranks, None)
 
-                core_layer = nn.Conv2d(
-                    in_channels=core_in,
-                    out_channels=core_out,
-                    kernel_size=m.kernel_size,
-                    stride=m.stride,
-                    padding=m.padding,
-                    dilation=m.dilation,
-                    groups=1 if decompose_method == DecomposeMethod.TUCKER else core_out,
-                    bias=False,
-                )
-
-                last_layer = nn.Conv2d(
-                    in_channels=core_out,
-                    out_channels=m.out_channels,
-                    kernel_size=1,
-                    stride=1,
-                    padding=0,
-                    bias=m.bias is not None,
-                )
-
-                decomposed_layers = [first_layer, core_layer, last_layer]
-                setattr(module, n, nn.Sequential(*decomposed_layers))
+                setattr(module, n, decomposed_layers)
                 continue
 
             if isinstance(m, nn.Linear) or (
