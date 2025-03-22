@@ -23,9 +23,9 @@ def main() -> None:
 
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5)
+    scheduler = EarlyStopping.create_lr_scheduler(optimizer)
+    early_stopping = EarlyStopping()
     scaler = torch.amp.GradScaler(torch.device(device).type)
-    early_stopping = EarlyStopping(patience=10, min_delta=0.0)
 
     train_loader = get_imagewoof_dataloader(DatasetSplit.TRAIN, num_workers=6)
     val_loader = get_imagewoof_dataloader(DatasetSplit.VAL, num_workers=6)

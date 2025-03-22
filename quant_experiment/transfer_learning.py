@@ -30,8 +30,8 @@ def main() -> None:
     val_loader = get_imagewoof_dataloader(DatasetSplit.VAL, num_workers=6)
     with SummaryWriter(str(CWD / f"runs/{MODEL_NAME}")) as writer:
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5)
-        early_stopping = EarlyStopping(patience=10)
+        scheduler = EarlyStopping.create_lr_scheduler(optimizer)
+        early_stopping = EarlyStopping()
         scaler = torch.amp.GradScaler(torch.device(device).type) if USE_AMP else None
 
         for frozen_epoch in range(1, FROZEN_MAX_EPOCHS + 1):
@@ -54,7 +54,7 @@ def main() -> None:
             param.requires_grad = True
 
         optimizer = torch.optim.SGD(model.parameters(), lr=1e-4, momentum=0.9)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5)
+        scheduler = EarlyStopping.create_lr_scheduler(optimizer)
         early_stopping.reset_counter()
         scaler = torch.amp.GradScaler(torch.device(device).type) if USE_AMP else None
 

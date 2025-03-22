@@ -1,14 +1,16 @@
 from copy import deepcopy
-from typing import Literal, Optional
+from typing import Optional
 
 import torch
+
+from ..config import EARLY_STOPPING_PATIENCE, LOSS_EPS, REDUCE_LR_FACTOR, REDUCE_LR_PATIENCE
 
 
 class EarlyStopping:
     def __init__(
         self,
         *,
-        patience: int = 0,
+        patience: int = EARLY_STOPPING_PATIENCE,
         previous_best_loss: float = float("inf"),
         previous_best_state_dict: Optional[dict] = None,
     ) -> None:
@@ -18,7 +20,7 @@ class EarlyStopping:
         self._best_state_dict = previous_best_state_dict
 
     def __call__(self, loss: float, model: Optional[torch.nn.Module] = None) -> bool:
-        if loss < self._best_loss:
+        if loss + LOSS_EPS < self._best_loss:
             self._best_loss = loss
             self._counter = 0
             if model is not None:
@@ -35,3 +37,14 @@ class EarlyStopping:
         if self._best_state_dict is None:
             raise ValueError("model hasn't been passed to the __call__ method")
         return self._best_state_dict
+
+    @staticmethod
+    def create_lr_scheduler(optimizer: torch.optim.Optimizer) -> torch.optim.lr_scheduler.ReduceLROnPlateau:
+        return torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="min",
+            factor=REDUCE_LR_FACTOR,
+            patience=REDUCE_LR_PATIENCE,
+            threshold=LOSS_EPS,
+            threshold_mode="abs",
+        )

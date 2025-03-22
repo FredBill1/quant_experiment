@@ -33,9 +33,9 @@ def main() -> None:
         print("QAT")
         with SummaryWriter(log_dir=MODEL_PATH.parent / "dorefa") as writer:
             optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5)
+            scheduler = EarlyStopping.create_lr_scheduler(optimizer)
+            early_stopping = EarlyStopping()
             scaler = torch.amp.GradScaler(torch.device(device).type)
-            early_stopping = EarlyStopping(patience=10)
             for epoch in range(1, QAT_MAX_EPOCHS + 1):
                 print(f"Epoch {epoch}")
                 train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device, scaler=scaler)

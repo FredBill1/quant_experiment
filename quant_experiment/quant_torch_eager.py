@@ -125,8 +125,8 @@ def main():
         # run the training loop (not shown)
         with SummaryWriter(log_dir=MODEL_PATH.parent / "qat") as writer:
             optimizer = torch.optim.SGD(model_fp32_prepared.parameters(), lr=1e-4, momentum=0.9)
-            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5)
-            early_stopping = EarlyStopping(patience=10)
+            scheduler = EarlyStopping.create_lr_scheduler(optimizer)
+            early_stopping = EarlyStopping()
             for epoch in range(1, QAT_MAX_EPOCHS + 1):
                 print(f"Epoch {epoch}")
                 if epoch >= 3:
