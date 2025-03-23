@@ -168,6 +168,7 @@ def decompose_model(model: nn.Module, hparams: dict[str, Any]) -> None:
             factor = hparams[f"decompose_rank_factor {fullname}"]
             method = hparams[f"decompose_method {fullname}"]
             if method == "cp":
+                # The maximum rank such that the number of parameters does not increase
                 max_rank = (
                     m.out_channels
                     * m.in_channels
@@ -180,9 +181,17 @@ def decompose_model(model: nn.Module, hparams: dict[str, Any]) -> None:
                 tqdm.write(f"cp {fullname=} {rank=}")
                 m_new = cp_decompose(m, rank, calculate=True)
             else:
-                ranks = [max(1, round(x * factor)) for x in [m.out_channels, m.in_channels]]
-                tqdm.write(f"tucker {fullname=} {ranks=}")
-                m_new = tucker_decompose(m, ranks, calculate=True)
+                # The maximum factor such that the number of parameters does not increase
+                a = m.in_channels * m.out_channels * m.kernel_size[0] * m.kernel_size[1]
+                b = m.in_channels**2 + m.out_channels**2
+                c = -a
+                delta = b**2 - 4 * a * c
+                max_factor = (-b + delta**0.5) / (2 * a)
+
+                ranks = [m.out_channels, m.in_channels]
+                new_ranks = [max(1, round(x * factor * max_factor)) for x in ranks]
+                tqdm.write(f"tucker {fullname=} {max_factor=} {factor*max_factor=} {ranks} -> {new_ranks}")
+                m_new = tucker_decompose(m, new_ranks, calculate=True)
 
         elif isinstance(m, nn.Linear) or (
             isinstance(m, nn.Conv2d)
