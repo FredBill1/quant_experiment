@@ -1,0 +1,103 @@
+from enum import StrEnum, auto
+from typing import Any
+
+import tensorly as tl
+import torch.nn as nn
+from ray import tune
+from ray.tune.search.sample import Domain
+from tqdm import tqdm
+
+from .cp_decompose import cp_decompose
+from .svd_decompose import svd_decompose
+from .tucker_decompose import tucker_decompose
+
+
+class Conv2dDecomposeMethod(StrEnum):
+    TUCKER = auto()
+    CP = auto()
+
+
+# Limit the maximum rank for CP decomposition to avoid memory error
+CP_DECOMPOSE_MAX_RANK = 512
+
+
+def decompose_model(model: nn.Module, hparams: dict[str, Any], do_calculation: bool) -> None:
+    tl.set_backend("pytorch")
+
+    named_modules = dict(model.named_modules())
+    for fullname, m in tqdm(named_modules.items()):
+        m_new = None
+        if isinstance(m, nn.Conv2d) and m.groups == 1 and m.kernel_size != (1, 1):
+            if hparams[f"decompose_skip {fullname}"]:
+                continue
+            factor = hparams[f"decompose_rank_factor {fullname}"]
+            method = hparams[f"decompose_method {fullname}"]
+            if method == Conv2dDecomposeMethod.CP:
+                # The maximum rank such that the number of parameters does not increase
+                max_rank = (
+                    m.out_channels
+                    * m.in_channels
+                    * m.kernel_size[0]
+                    * m.kernel_size[1]
+                    // (m.out_channels + m.in_channels + m.kernel_size[0] + m.kernel_size[1])
+                )
+                max_rank = min(max_rank, CP_DECOMPOSE_MAX_RANK)
+                rank = max(1, round(max_rank * factor))
+                tqdm.write(f"cp {fullname=} {rank=}")
+                m_new = cp_decompose(m, rank, do_calculation)
+            elif method == Conv2dDecomposeMethod.TUCKER:
+                # The maximum factor such that the number of parameters does not increase
+                a = m.in_channels * m.out_channels * m.kernel_size[0] * m.kernel_size[1]
+                b = m.in_channels**2 + m.out_channels**2
+                c = -a
+                delta = b**2 - 4 * a * c
+                max_factor = (-b + delta**0.5) / (2 * a)
+
+                shape = [m.out_channels, m.in_channels]
+                new_ranks = [max(1, round(x * factor * max_factor)) for x in shape]
+                tqdm.write(f"tucker {fullname=} {max_factor=} {factor*max_factor=} {shape} -> {new_ranks}")
+                m_new = tucker_decompose(m, tuple(new_ranks), do_calculation)
+
+        elif isinstance(m, nn.Linear) or (
+            isinstance(m, nn.Conv2d)
+            and m.kernel_size == (1, 1)
+            and m.stride == (1, 1)
+            and m.padding == (0, 0)
+            and m.dilation == (1, 1)
+            and m.groups == 1
+        ):
+            if hparams[f"decompose_skip {fullname}"]:
+                continue
+            factor = hparams[f"decompose_rank_factor {fullname}"]
+
+            shape = [m.out_features, m.in_features] if isinstance(m, nn.Linear) else [m.out_channels, m.in_channels]
+            max_rank = shape[0] * shape[1] // (shape[0] + shape[1])  # The maximum rank such that the number of parameters does not increase
+            max_rank = min(max_rank, min(shape))  # The maximum rank is the minimum of the two dimensions
+            rank = max(1, round(max_rank * factor))
+            tqdm.write(f"svd {fullname=} {shape=} {rank=}")
+            m_new = svd_decompose(m, rank, do_calculation)
+
+        if m_new is not None:
+            parts = fullname.rsplit(".", 1)
+            parent = named_modules[parts[0]] if len(parts) == 2 else model
+            setattr(parent, parts[-1], m_new)
+
+
+def decompose_model_hparam_space(model: nn.Module) -> dict[str, Domain]:
+    hparam_space = {}
+    for fullname, m in model.named_modules():
+        if isinstance(m, nn.Conv2d) and m.groups == 1 and m.kernel_size != (1, 1):
+            hparam_space[f"decompose_skip {fullname}"] = tune.choice([True, False])
+            hparam_space[f"decompose_rank_factor {fullname}"] = tune.uniform(0.1, 1.0)
+            hparam_space[f"decompose_method {fullname}"] = tune.choice([Conv2dDecomposeMethod.TUCKER, Conv2dDecomposeMethod.CP])
+        if isinstance(m, nn.Linear) or (
+            isinstance(m, nn.Conv2d)
+            and m.kernel_size == (1, 1)
+            and m.stride == (1, 1)
+            and m.padding == (0, 0)
+            and m.dilation == (1, 1)
+            and m.groups == 1
+        ):
+            hparam_space[f"decompose_skip {fullname}"] = tune.choice([True, False])
+            hparam_space[f"decompose_rank_factor {fullname}"] = tune.uniform(0.1, 1.0)
+    return hparam_space
