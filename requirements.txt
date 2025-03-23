@@ -9,4 +9,4 @@ tensorboard
 torchinfo
 scipy
 tensorly==0.9.0
-ray[tune]
+optuna

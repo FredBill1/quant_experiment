@@ -1,9 +1,10 @@
 import torch
 import torch.nn as nn
+from optuna.trial import FixedTrial
 
 from .config import MODEL_NAME, MODEL_PATH
 from .data.imagewoof import DatasetSplit, get_imagewoof_dataloader
-from .methods.low_rank_decompose.decompose_model import Conv2dDecomposeMethod, decompose_model, decompose_model_hparam_space
+from .methods.low_rank_decompose.decompose_model import Conv2dDecomposeMethod, decompose_model
 from .models import create_model
 from .utils.training import evaluate, get_device
 
@@ -11,9 +12,6 @@ from .utils.training import evaluate, get_device
 def main() -> None:
     model = create_model(MODEL_NAME, from_pretrained=False, frozen=False, quantable=True)
     model.load_state_dict(torch.load(MODEL_PATH))
-
-    hparam_space = decompose_model_hparam_space(model)
-    print(hparam_space.keys())
 
     hparams = {}
     for fullname, m in model.named_modules():
@@ -32,12 +30,12 @@ def main() -> None:
             hparams[f"decompose_skip {fullname}"] = False
             hparams[f"decompose_rank_factor {fullname}"] = 1.0
 
-    hparams = {name: domain.sample() for name, domain in hparam_space.items()}
+    trail = FixedTrial(hparams)
 
     device = get_device()
     model.to(device)
     print(sum(p.numel() for p in model.parameters()))
-    decompose_model(model, hparams, do_calculation=True)
+    decompose_model(model, trail, do_calculation=True)
     print(sum(p.numel() for p in model.parameters()))
 
     test_loader = get_imagewoof_dataloader(DatasetSplit.TEST, num_workers=0, persistent_workers=False)
