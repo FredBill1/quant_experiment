@@ -16,7 +16,7 @@ from .utils.training import evaluate, get_device
 CP_MAX_RANK = 512
 
 
-def tucker_decompose(m: nn.Conv2d, ranks: list[int], calculate: bool) -> nn.Module:
+def tucker_decompose(m: nn.Conv2d, ranks: list[int], do_calculation: bool) -> nn.Module:
     has_bias = m.bias is not None
 
     first_layer = nn.Conv2d(
@@ -47,7 +47,7 @@ def tucker_decompose(m: nn.Conv2d, ranks: list[int], calculate: bool) -> nn.Modu
         bias=has_bias,
     )
 
-    if calculate:
+    if do_calculation:
         if has_bias:
             last_layer.bias.data = m.bias.data
 
@@ -70,7 +70,7 @@ def tucker_decompose(m: nn.Conv2d, ranks: list[int], calculate: bool) -> nn.Modu
     return nn.Sequential(first_layer, core_layer, last_layer)
 
 
-def cp_decompose(m: nn.Conv2d, rank: int, calculate: bool) -> nn.Module:
+def cp_decompose(m: nn.Conv2d, rank: int, do_calculation: bool) -> nn.Module:
     has_bias = m.bias is not None
 
     pointwise_s_to_r_layer = torch.nn.Conv2d(
@@ -113,7 +113,7 @@ def cp_decompose(m: nn.Conv2d, rank: int, calculate: bool) -> nn.Module:
         bias=has_bias,
     )
 
-    if calculate:
+    if do_calculation:
         if has_bias:
             pointwise_r_to_t_layer.bias.data = m.bias.data
 
@@ -132,7 +132,7 @@ def cp_decompose(m: nn.Conv2d, rank: int, calculate: bool) -> nn.Module:
     return nn.Sequential(pointwise_s_to_r_layer, depthwise_vertical_layer, depthwise_horizontal_layer, pointwise_r_to_t_layer)
 
 
-def svd_decompose(m: nn.Conv2d | nn.Linear, rank: int, calculate: bool) -> nn.Module:
+def svd_decompose(m: nn.Conv2d | nn.Linear, rank: int, do_calculation: bool) -> nn.Module:
     has_bias = m.bias is not None
 
     if isinstance(m, nn.Linear):
@@ -142,7 +142,7 @@ def svd_decompose(m: nn.Conv2d | nn.Linear, rank: int, calculate: bool) -> nn.Mo
         fc1 = nn.Conv2d(m.in_channels, rank, 1, bias=False)
         fc2 = nn.Conv2d(rank, m.out_channels, 1, bias=has_bias)
 
-    if calculate:
+    if do_calculation:
         weight = m.weight.data.detach()
         u, s, v = truncated_svd(weight.squeeze(), n_eigenvecs=rank)
 
@@ -156,7 +156,7 @@ def svd_decompose(m: nn.Conv2d | nn.Linear, rank: int, calculate: bool) -> nn.Mo
     return nn.Sequential(fc1, fc2)
 
 
-def decompose_model(model: nn.Module, hparams: dict[str, Any]) -> None:
+def decompose_model(model: nn.Module, hparams: dict[str, Any], do_calculation: bool) -> None:
     tl.set_backend("pytorch")
 
     named_modules = dict(model.named_modules())
@@ -179,7 +179,7 @@ def decompose_model(model: nn.Module, hparams: dict[str, Any]) -> None:
                 max_rank = min(max_rank, CP_MAX_RANK)
                 rank = max(1, round(max_rank * factor))
                 tqdm.write(f"cp {fullname=} {rank=}")
-                m_new = cp_decompose(m, rank, calculate=True)
+                m_new = cp_decompose(m, rank, do_calculation)
             else:
                 # The maximum factor such that the number of parameters does not increase
                 a = m.in_channels * m.out_channels * m.kernel_size[0] * m.kernel_size[1]
@@ -188,10 +188,10 @@ def decompose_model(model: nn.Module, hparams: dict[str, Any]) -> None:
                 delta = b**2 - 4 * a * c
                 max_factor = (-b + delta**0.5) / (2 * a)
 
-                ranks = [m.out_channels, m.in_channels]
-                new_ranks = [max(1, round(x * factor * max_factor)) for x in ranks]
-                tqdm.write(f"tucker {fullname=} {max_factor=} {factor*max_factor=} {ranks} -> {new_ranks}")
-                m_new = tucker_decompose(m, new_ranks, calculate=True)
+                shape = [m.out_channels, m.in_channels]
+                new_ranks = [max(1, round(x * factor * max_factor)) for x in shape]
+                tqdm.write(f"tucker {fullname=} {max_factor=} {factor*max_factor=} {shape} -> {new_ranks}")
+                m_new = tucker_decompose(m, new_ranks, do_calculation)
 
         elif isinstance(m, nn.Linear) or (
             isinstance(m, nn.Conv2d)
@@ -205,9 +205,12 @@ def decompose_model(model: nn.Module, hparams: dict[str, Any]) -> None:
                 continue
             factor = hparams[f"decompose_rank_factor {fullname}"]
 
-            ranks = [m.out_features, m.in_features] if isinstance(m, nn.Linear) else [m.out_channels, m.in_channels]
-            rank = max(1, round(min(ranks) * factor))
-            m_new = svd_decompose(m, rank, calculate=True)
+            shape = [m.out_features, m.in_features] if isinstance(m, nn.Linear) else [m.out_channels, m.in_channels]
+            max_rank = shape[0] * shape[1] // (shape[0] + shape[1])  # The maximum rank such that the number of parameters does not increase
+            max_rank = min(max_rank, min(shape))  # The maximum rank is the minimum of the two dimensions
+            rank = max(1, round(max_rank * factor))
+            tqdm.write(f"svd {fullname=} {shape=} {rank=}")
+            m_new = svd_decompose(m, rank, do_calculation)
 
         if m_new is not None:
             parts = fullname.rsplit(".", 1)
@@ -250,13 +253,13 @@ def main() -> None:
             and m.dilation == (1, 1)
             and m.groups == 1
         ):
-            hparams[f"decompose_skip {fullname}"] = True
-            hparams[f"decompose_rank_factor {fullname}"] = 0.9
+            hparams[f"decompose_skip {fullname}"] = False
+            hparams[f"decompose_rank_factor {fullname}"] = 1.0
 
     device = get_device()
     model.to(device)
     print(sum(p.numel() for p in model.parameters()))
-    decompose_model(model, hparams)
+    decompose_model(model, hparams, do_calculation=True)
     print(sum(p.numel() for p in model.parameters()))
 
     test_loader = get_imagewoof_dataloader(DatasetSplit.TEST, num_workers=0, persistent_workers=False)
