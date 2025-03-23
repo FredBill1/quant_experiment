@@ -21,12 +21,14 @@ class EarlyStopping:
 
     def __call__(self, loss: float, model: Optional[torch.nn.Module] = None) -> bool:
         if loss + LOSS_EPS < self._best_loss:
+            print(f"EarlyStopping: Loss improved from {self._best_loss:.4f} to {loss:.4f}")
             self._best_loss = loss
             self._counter = 0
             if model is not None:
                 self._best_state_dict = deepcopy(model.state_dict())
         else:
             self._counter += 1
+            print(f"EarlyStopping: Loss did not improve from {self._best_loss:.4f}, counter={self._counter}")
         return self._counter >= self._patience
 
     def reset_counter(self) -> None:
