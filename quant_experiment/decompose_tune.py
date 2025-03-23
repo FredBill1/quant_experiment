@@ -12,7 +12,8 @@ from .models import create_model
 from .utils.EarlyStopping import EarlyStopping
 from .utils.training import evaluate, get_device, train_one_epoch
 
-DECOMPOSE_FINE_TUNE_MAX_EPOCHS = 200
+DECOMPOSE_FINE_TUNE_MAX_EPOCHS = 80
+DO_EARLY_STOP = False
 
 
 def target(accuracy: float, size: float) -> float:
@@ -56,7 +57,7 @@ def main():
             print(f"Epoch {epoch}")
             train_one_epoch(model, train_loader, criterion, optimizer, device, scaler=scaler)
             val_loss, val_acc = evaluate(model, val_loader, criterion, device)
-            if early_stopping(val_loss, model):
+            if early_stopping(val_loss, model) and DO_EARLY_STOP:
                 print("Early stopping")
                 break
             objective_value = target(val_acc, num_params)
@@ -78,7 +79,10 @@ def main():
     study = optuna.create_study(
         storage=f"sqlite:///{db_file.as_posix()}",
         direction="minimize",
-        pruner=optuna.pruners.HyperbandPruner(),
+        pruner=optuna.pruners.HyperbandPruner(
+            min_resource=1,
+            max_resource=DECOMPOSE_FINE_TUNE_MAX_EPOCHS,
+        ),
         study_name=study_name,
         load_if_exists=True,
     )
