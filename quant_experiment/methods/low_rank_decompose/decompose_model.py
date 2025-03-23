@@ -19,13 +19,23 @@ class Conv2dDecomposeMethod(StrEnum):
 CP_DECOMPOSE_MAX_RANK = 512
 
 
+def is_decomposeable_conv2d(m: nn.Module) -> bool:
+    return isinstance(m, nn.Conv2d) and m.groups == 1 and m.kernel_size != (1, 1)
+
+
+def is_decomposeable_linear(m: nn.Module) -> bool:
+    return isinstance(m, nn.Linear) or (
+        isinstance(m, nn.Conv2d) and m.kernel_size == (1, 1) and m.stride == (1, 1) and m.padding == (0, 0) and m.dilation == (1, 1) and m.groups == 1
+    )
+
+
 def decompose_model(model: nn.Module, trail: Trial, do_calculation: bool) -> None:
     tl.set_backend("pytorch")
 
     named_modules = dict(model.named_modules())
     for fullname, m in tqdm(named_modules.items()):
         m_new = None
-        if isinstance(m, nn.Conv2d) and m.groups == 1 and m.kernel_size != (1, 1):
+        if is_decomposeable_conv2d(m):
             if trail.suggest_categorical(f"decompose_skip {fullname}", [True, False]):
                 continue
             factor = trail.suggest_float(f"decompose_rank_factor {fullname}", 0.1, 1.0)
@@ -53,17 +63,10 @@ def decompose_model(model: nn.Module, trail: Trial, do_calculation: bool) -> Non
 
                 shape = [m.out_channels, m.in_channels]
                 new_ranks = [max(1, round(x * factor * max_factor)) for x in shape]
-                tqdm.write(f"tucker {fullname=} {max_factor=:.4f} {factor*max_factor=:.4f} {shape} -> {new_ranks}")
+                tqdm.write(f"tucker {fullname=} {max_factor=:.4f} factor={factor*max_factor:.4f} {shape} -> {new_ranks}")
                 m_new = tucker_decompose(m, tuple(new_ranks), do_calculation)
 
-        elif isinstance(m, nn.Linear) or (
-            isinstance(m, nn.Conv2d)
-            and m.kernel_size == (1, 1)
-            and m.stride == (1, 1)
-            and m.padding == (0, 0)
-            and m.dilation == (1, 1)
-            and m.groups == 1
-        ):
+        elif is_decomposeable_linear(m):
             if trail.suggest_categorical(f"decompose_skip {fullname}", [True, False]):
                 continue
             factor = trail.suggest_float(f"decompose_rank_factor {fullname}", 0.1, 1.0)

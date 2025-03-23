@@ -4,7 +4,7 @@ from optuna.trial import FixedTrial
 
 from .config import MODEL_NAME, MODEL_PATH
 from .data.imagewoof import DatasetSplit, get_imagewoof_dataloader
-from .methods.low_rank_decompose.decompose_model import Conv2dDecomposeMethod, decompose_model
+from .methods.low_rank_decompose.decompose_model import Conv2dDecomposeMethod, decompose_model, is_decomposeable_conv2d, is_decomposeable_linear
 from .models import create_model
 from .utils.training import evaluate, get_device
 
@@ -15,18 +15,11 @@ def main() -> None:
 
     hparams = {}
     for fullname, m in model.named_modules():
-        if isinstance(m, nn.Conv2d) and m.groups == 1 and m.kernel_size != (1, 1):
+        if is_decomposeable_conv2d(m):
             hparams[f"decompose_skip {fullname}"] = False
             hparams[f"decompose_rank_factor {fullname}"] = 1.0
             hparams[f"decompose_method {fullname}"] = Conv2dDecomposeMethod.TUCKER
-        if isinstance(m, nn.Linear) or (
-            isinstance(m, nn.Conv2d)
-            and m.kernel_size == (1, 1)
-            and m.stride == (1, 1)
-            and m.padding == (0, 0)
-            and m.dilation == (1, 1)
-            and m.groups == 1
-        ):
+        if is_decomposeable_linear(m):
             hparams[f"decompose_skip {fullname}"] = False
             hparams[f"decompose_rank_factor {fullname}"] = 1.0
 
@@ -39,7 +32,7 @@ def main() -> None:
     print(sum(p.numel() for p in model.parameters()))
 
     test_loader = get_imagewoof_dataloader(DatasetSplit.TEST, num_workers=0, persistent_workers=False)
-    criterion = torch.nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss()
     test_loss, test_acc = evaluate(model, test_loader, criterion, device)
     print(f"{test_loss=} {test_acc=}")
 
