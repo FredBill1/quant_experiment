@@ -18,6 +18,8 @@ class Conv2dDecomposeMethod(StrEnum):
 # Limit the maximum rank for CP decomposition to avoid memory error
 CP_DECOMPOSE_MAX_RANK = 512
 
+MIN_DECOMPOSE_FACTOR = 0.5
+
 
 def is_decomposeable_conv2d(m: nn.Module) -> bool:
     return isinstance(m, nn.Conv2d) and m.groups == 1 and m.kernel_size != (1, 1)
@@ -29,17 +31,22 @@ def is_decomposeable_linear(m: nn.Module) -> bool:
     )
 
 
-def decompose_model(model: nn.Module, trail: Trial, do_calculation: bool) -> None:
+def decompose_model(model: nn.Module, trail: Trial, do_calculation: bool, *, layerwise: bool = True, skip_linear: bool = False) -> None:
     tl.set_backend("pytorch")
+    if not layerwise:
+        factor = trail.suggest_float("decompose_rank_factor", MIN_DECOMPOSE_FACTOR, 1.0)
+        method = trail.suggest_categorical("decompose_method", [Conv2dDecomposeMethod.TUCKER, Conv2dDecomposeMethod.CP])
 
     named_modules = dict(model.named_modules())
     for fullname, m in tqdm(named_modules.items()):
         m_new = None
         if is_decomposeable_conv2d(m):
-            if trail.suggest_categorical(f"decompose_skip {fullname}", [True, False]):
-                continue
-            factor = trail.suggest_float(f"decompose_rank_factor {fullname}", 0.1, 1.0)
-            method = trail.suggest_categorical(f"decompose_method {fullname}", [Conv2dDecomposeMethod.TUCKER, Conv2dDecomposeMethod.CP])
+            if layerwise:
+                if trail.suggest_categorical(f"decompose_skip {fullname}", [True, False]):
+                    continue
+                factor = trail.suggest_float(f"decompose_rank_factor {fullname}", MIN_DECOMPOSE_FACTOR, 1.0)
+                method = trail.suggest_categorical(f"decompose_method {fullname}", [Conv2dDecomposeMethod.TUCKER, Conv2dDecomposeMethod.CP])
+
             if method == Conv2dDecomposeMethod.CP:
                 # The maximum rank such that the number of parameters does not increase
                 max_rank = (
@@ -67,9 +74,12 @@ def decompose_model(model: nn.Module, trail: Trial, do_calculation: bool) -> Non
                 m_new = tucker_decompose(m, tuple(new_ranks), do_calculation)
 
         elif is_decomposeable_linear(m):
-            if trail.suggest_categorical(f"decompose_skip {fullname}", [True, False]):
+            if skip_linear:
                 continue
-            factor = trail.suggest_float(f"decompose_rank_factor {fullname}", 0.1, 1.0)
+            if layerwise:
+                if trail.suggest_categorical(f"decompose_skip {fullname}", [True, False]):
+                    continue
+                factor = trail.suggest_float(f"decompose_rank_factor {fullname}", 0.1, 1.0)
 
             shape = [m.out_features, m.in_features] if isinstance(m, nn.Linear) else [m.out_channels, m.in_channels]
             max_rank = shape[0] * shape[1] // (shape[0] + shape[1])  # The maximum rank such that the number of parameters does not increase
