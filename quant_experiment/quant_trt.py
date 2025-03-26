@@ -4,8 +4,9 @@ import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
 import torch
 import torch.nn as nn
+from tqdm import tqdm
 
-from .config import IMAGE_SIZE, MODEL_NAME, MODEL_PATH
+from .config import MODEL_NAME, MODEL_PATH
 from .data.imagewoof import DatasetSplit, get_imagewoof_dataloader
 from .models import create_model
 from .utils.training import evaluate, get_device
@@ -21,11 +22,14 @@ def main() -> None:
     train_loader = get_imagewoof_dataloader(DatasetSplit.TRAIN, num_workers=0, persistent_workers=False)
     test_loader = get_imagewoof_dataloader(DatasetSplit.TEST, num_workers=0, persistent_workers=False)
 
+    # test_loss, test_acc = evaluate(model, test_loader, nn.CrossEntropyLoss(), device)
+    # print(f"{test_loss=}, {test_acc=}")
+
     def forward_loop(model: nn.Module) -> None:
-        for batch in train_loader:
+        for batch in tqdm(train_loader):
             model(batch[0].to(device))
 
-    config = mtq.FP8_DEFAULT_CFG
+    config = mtq.INT8_SMOOTHQUANT_CFG
 
     model = mtq.quantize(model, config, forward_loop)
     mtq.print_quant_summary(model)
