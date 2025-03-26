@@ -1,3 +1,4 @@
+from itertools import islice
 from typing import Optional
 
 import torch
@@ -54,10 +55,13 @@ def evaluate(
     val_loader: DataLoader,
     criterion: torch.nn.Module,
     device: str,
+    *,
+    max_step: Optional[int] = None,
 ) -> tuple[float, float]:
     model.to(device)
     model.eval()
     total_loss, total_correct, total_samples = 0.0, 0, 0
+    val_loader = islice(val_loader, max_step) if max_step is not None and max_step < len(val_loader) else val_loader
     pbar = tqdm(val_loader)
     with torch.no_grad():
         for inputs, targets in pbar:
