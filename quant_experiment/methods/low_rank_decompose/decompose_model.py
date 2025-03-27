@@ -18,7 +18,7 @@ class Conv2dDecomposeMethod(StrEnum):
 # Limit the maximum rank for CP decomposition to avoid memory error
 CP_DECOMPOSE_MAX_RANK = 512
 
-MIN_DECOMPOSE_FACTOR = 0.5
+MIN_DECOMPOSE_FACTOR = 0.1
 
 
 def is_decomposeable_conv2d(m: nn.Module) -> bool:
