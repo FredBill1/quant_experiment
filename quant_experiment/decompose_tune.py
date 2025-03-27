@@ -81,7 +81,7 @@ def main():
         direction="minimize",
         pruner=optuna.pruners.HyperbandPruner(
             min_resource=1,
-            max_resource=DECOMPOSE_FINE_TUNE_MAX_EPOCHS,
+            max_resource=DECOMPOSE_FINE_TUNE_MAX_EPOCHS + 1,
         ),
         study_name=study_name,
         load_if_exists=True,
