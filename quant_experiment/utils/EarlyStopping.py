@@ -35,6 +35,10 @@ class EarlyStopping:
         self._counter = 0
 
     @property
+    def best_loss(self) -> float:
+        return self._best_loss
+
+    @property
     def best_state_dict(self) -> dict:
         if self._best_state_dict is None:
             raise ValueError("model hasn't been passed to the __call__ method")
