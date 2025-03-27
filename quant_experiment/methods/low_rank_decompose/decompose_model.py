@@ -56,8 +56,7 @@ def decompose_model(model: nn.Module, trail: Trial, do_calculation: bool, *, lay
                     * m.kernel_size[1]
                     // (m.out_channels + m.in_channels + m.kernel_size[0] + m.kernel_size[1])
                 )
-                max_rank = min(max_rank, CP_DECOMPOSE_MAX_RANK)
-                rank = max(1, round(max_rank * factor))
+                rank = max(1, min(CP_DECOMPOSE_MAX_RANK, round(max_rank * factor)))
                 tqdm.write(f"cp {fullname=} {rank=:.4f}")
                 m_new = cp_decompose(m, rank, do_calculation)
             elif method == Conv2dDecomposeMethod.TUCKER:

@@ -2,6 +2,7 @@ import json
 from copy import deepcopy
 from itertools import product
 
+import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
@@ -20,7 +21,7 @@ LOG_DIR = MODEL_PATH.with_name("search")
 TBOARD_DIR = LOG_DIR / "tboard"
 
 DECOMPOSE_METHODS = [None, Conv2dDecomposeMethod.TUCKER, Conv2dDecomposeMethod.CP]
-DECOMPOSE_RATIOS = [0.5, 0.6, 0.7, 0.8, 0.9]
+DECOMPOSE_RATIOS = np.linspace(0.1, 0.9, 9)
 QUANT_WEIGHT_DTYPES = {
     "int2": qint2,
     "int4": qint4,
@@ -70,6 +71,8 @@ def main() -> None:
                 model.to(device)
                 if d_method is not None:
                     decompose_model(model, FixedTrial(decompose_config), do_calculation=True, layerwise=False, skip_linear=True)
+                    test_loss_before_finetune, test_acc_before_finetune = evaluate(model, test_loader, criterion, device)
+                    print(f"{test_loss_before_finetune=} {test_acc_before_finetune=}")
 
                     with SummaryWriter(str(TBOARD_DIR), comment=f"{d_method}_{d_ratio}") as writer:
                         optimizer = torch.optim.SGD(model.parameters(), lr=1e-4, momentum=0.9)
@@ -93,7 +96,8 @@ def main() -> None:
                         model.load_state_dict(early_stopping.best_state_dict)
 
                 test_loss, test_acc = evaluate(model, test_loader, criterion, device)
-                pd.DataFrame([{"test_loss": test_loss, "test_acc": test_acc}]).to_csv(decomposed_model_path.with_suffix(".csv"), index=False)
+                df = pd.DataFrame([{"test_loss": [test_loss_before_finetune, test_loss], "test_acc": [test_acc_before_finetune, test_acc]}])
+                df.to_csv(decomposed_model_path.with_suffix(".csv"), index=False)
                 print(f"{test_loss=} {test_acc=}")
                 torch.save(model.state_dict(), decomposed_model_path)
 
