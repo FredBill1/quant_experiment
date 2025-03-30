@@ -98,6 +98,10 @@ class ExperimentVars:
     test_loader: DataLoader
 
 
+def model_size(model: nn.Module) -> int:
+    return sum(p.numel() * p.element_size() for p in model.state_dict().values())
+
+
 class Experiment:
     def __init__(
         self,
@@ -195,6 +199,7 @@ class Experiment:
 
             data = asdict(replace(self.cfg, do_finetune=False, quant_weight=None, quant_act=None))
             results = dict(
+                model_size=model_size(model),
                 train_loss=train_loss,
                 train_acc=train_acc,
                 val_loss=val_loss,
@@ -227,6 +232,7 @@ class Experiment:
 
             data = asdict(replace(self.cfg, do_finetune=True, quant_weight=None, quant_act=None))
             results = dict(
+                model_size=model_size(model),
                 train_loss=train_loss,
                 train_acc=train_acc,
                 val_loss=val_loss,
@@ -278,6 +284,7 @@ class Experiment:
         test_loss, test_acc = evaluate(model, self.vars.test_loader, self.criterion, self.vars.device, desc_prefix="Test:  ")
 
         results = dict(
+            model_size=model_size(model),
             train_loss=train_loss,
             train_acc=train_acc,
             val_loss=val_loss,
