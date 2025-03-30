@@ -1,3 +1,4 @@
+import gc
 from collections.abc import Generator
 from dataclasses import asdict, dataclass, replace
 from functools import partial
@@ -302,6 +303,11 @@ def main() -> None:
     for i, exp_cfg in enumerate(all_configs := list(ExperimentConfig.all_configs()), 1):
         console.rule(f"[bold cyan]Running experiment {i}/{len(all_configs)}[/bold cyan]")
         Experiment(exp_cfg, exp_vars).run()
+
+        console.print("[bold blue]Clearing cache[/bold blue]")
+        gc.collect()
+        if torch.device(device).type == "cuda":
+            torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":
