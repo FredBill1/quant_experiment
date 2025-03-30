@@ -11,6 +11,10 @@ def get_device() -> str:
     return torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
 
 
+def get_desc(prefix: str, loss: float, acc: float) -> str:
+    return f"{prefix}[yellow]{loss=:.4f}[/yellow] [green]{acc=:.4f}[/green]"
+
+
 def train_one_epoch(
     model: torch.nn.Module,
     train_loader: DataLoader,
@@ -20,13 +24,14 @@ def train_one_epoch(
     *,
     scaler: Optional[torch.amp.GradScaler] = None,
     max_step: Optional[int] = None,
+    desc_prefix: str = "Train: ",
 ) -> tuple[float, float]:
     model.to(device)
     model.train()
     total_loss, total_correct, total_samples = 0.0, 0, 0
     total = len(train_loader) if max_step is None else min(max_step, len(train_loader))
     train_loader = islice(train_loader, max_step) if max_step is not None and max_step < len(train_loader) else train_loader
-    pbar = tqdm(train_loader, total=total)
+    pbar = tqdm(train_loader, total=total, desc=get_desc(desc_prefix, 0.0, 0.0) + ":")
     for inputs, targets in pbar:
         inputs, targets = inputs.to(device), targets.to(device)
         with torch.amp.autocast(torch.device(device).type, enabled=scaler is not None):
@@ -44,12 +49,12 @@ def train_one_epoch(
             loss.backward()
             optimizer.step()
 
-        total_loss += loss.item()
+        total_loss += loss.item() * targets.size(0)
         _, predicted = outputs.max(1)
         total_correct += predicted.eq(targets).sum().item()
         total_samples += targets.size(0)
         loss, accuracy = total_loss / total_samples, total_correct / total_samples
-        pbar.set_description(f"[yellow]{loss=:.4f}[/yellow] [green]{accuracy=:.4f}[/green]")
+        pbar.set_description(get_desc(desc_prefix, loss, accuracy))
     return loss, accuracy
 
 
@@ -60,13 +65,14 @@ def evaluate(
     device: str,
     *,
     max_step: Optional[int] = None,
+    desc_prefix: str = "Val:   ",
 ) -> tuple[float, float]:
     model.to(device)
     model.eval()
     total_loss, total_correct, total_samples = 0.0, 0, 0
     total = len(val_loader) if max_step is None else min(max_step, len(val_loader))
     val_loader = islice(val_loader, max_step) if max_step is not None and max_step < len(val_loader) else val_loader
-    pbar = tqdm(val_loader, total=total)
+    pbar = tqdm(val_loader, total=total, desc=get_desc(desc_prefix, 0.0, 0.0) + ":")
     with torch.no_grad():
         for inputs, targets in pbar:
             inputs, targets = inputs.to(device), targets.to(device)
@@ -75,10 +81,10 @@ def evaluate(
                 outputs = outputs.dequantize()
             loss = criterion(outputs, targets)
 
-            total_loss += loss.item()
+            total_loss += loss.item() * targets.size(0)
             _, predicted = outputs.max(1)
             total_correct += predicted.eq(targets).sum().item()
             total_samples += targets.size(0)
             loss, accuracy = total_loss / total_samples, total_correct / total_samples
-            pbar.set_description(f"[yellow]{loss=:.4f}[/yellow] [green]{accuracy=:.4f}[/green]")
+            pbar.set_description(get_desc(desc_prefix, loss, accuracy))
     return loss, accuracy

@@ -164,6 +164,8 @@ class Experiment:
     def write_results(self, data: dict) -> None:
         df = pd.DataFrame([data])
         df.to_csv(self.results_path, mode="a", index=False, header=not self.results_path.exists())
+        console.print(f"[bold green]Results saved to {self.results_path}[/bold green]:")
+        pp(data)
 
     def get_decomposed_finetuned_model(self) -> nn.Module:
         console.print("[bold cyan]`get_decomposed_finetuned_model`[/bold cyan]")
@@ -185,9 +187,9 @@ class Experiment:
 
         with SummaryWriter(str(TBOARD_DIR / self.prefix)) as writer:
             console.print("[bold blue]Evaluating model before finetune[/bold blue]")
-            train_loss, train_acc = evaluate(model, self.vars.train_loader, self.criterion, self.vars.device)
-            val_loss, val_acc = evaluate(model, self.vars.val_loader, self.criterion, self.vars.device)
-            test_loss, test_acc = evaluate(model, self.vars.test_loader, self.criterion, self.vars.device)
+            train_loss, train_acc = evaluate(model, self.vars.train_loader, self.criterion, self.vars.device, desc_prefix="Train: ")
+            val_loss, val_acc = evaluate(model, self.vars.val_loader, self.criterion, self.vars.device, desc_prefix="Val:   ")
+            test_loss, test_acc = evaluate(model, self.vars.test_loader, self.criterion, self.vars.device, desc_prefix="Test:  ")
             self.write_metrics(writer, train_loss, train_acc, val_loss, val_acc, test_loss, test_acc, 0)
 
             data = asdict(replace(self.cfg, do_finetune=False, quant_weight=None, quant_act=None))
@@ -205,8 +207,8 @@ class Experiment:
             for epoch in range(1, DECOMPOSE_FINE_TUNE_MAX_EPOCHS + 1):
                 console.print(f"[bold magenta]Epoch {epoch}[/bold magenta]")
                 train_loss, train_acc = train_one_epoch(model, self.vars.train_loader, self.criterion, optimizer, self.vars.device, scaler=scaler)
-                val_loss, val_acc = evaluate(model, self.vars.val_loader, self.criterion, self.vars.device)
-                test_loss, test_acc = evaluate(model, self.vars.test_loader, self.criterion, self.vars.device)
+                val_loss, val_acc = evaluate(model, self.vars.val_loader, self.criterion, self.vars.device, desc_prefix="Val:   ")
+                test_loss, test_acc = evaluate(model, self.vars.test_loader, self.criterion, self.vars.device, desc_prefix="Test:  ")
                 self.write_metrics(writer, train_loss, train_acc, val_loss, val_acc, test_loss, test_acc, epoch)
 
                 if early_stopping(val_loss, model):
@@ -218,9 +220,9 @@ class Experiment:
 
             console.print("[bold blue]Evaluating model after finetune[/bold blue]")
             model.load_state_dict(early_stopping.best_state_dict)
-            train_loss, train_acc = evaluate(model, self.vars.train_loader, self.criterion, self.vars.device)
-            val_loss, val_acc = evaluate(model, self.vars.val_loader, self.criterion, self.vars.device)
-            test_loss, test_acc = evaluate(model, self.vars.test_loader, self.criterion, self.vars.device)
+            train_loss, train_acc = evaluate(model, self.vars.train_loader, self.criterion, self.vars.device, desc_prefix="Train: ")
+            val_loss, val_acc = evaluate(model, self.vars.val_loader, self.criterion, self.vars.device, desc_prefix="Val:   ")
+            test_loss, test_acc = evaluate(model, self.vars.test_loader, self.criterion, self.vars.device, desc_prefix="Test:  ")
 
             data = asdict(replace(self.cfg, do_finetune=True, quant_weight=None, quant_act=None))
             results = dict(
@@ -253,7 +255,7 @@ class Experiment:
         quantize(model, QUANT_WEIGHT_DTYPES[self.cfg.quant_weight], QUANT_ACTIVATION_DTYPES[self.cfg.quant_act])
         console.print("[bold blue]Calibrating model[/bold blue]")
         with Calibration(streamline=False):
-            evaluate(model, self.vars.val_loader, self.criterion, self.vars.device)
+            evaluate(model, self.vars.train_loader, self.criterion, self.vars.device, desc_prefix="Calib: ")
         freeze(model)
         quanto_save(model, self.quantized_path)
 
@@ -270,9 +272,9 @@ class Experiment:
         console.print("[bold cyan]===== Running experiment =====[/bold cyan]")
         model = self.get_quantized_model()
         console.print("[bold magenta]Evaluating final model[/bold magenta]")
-        train_loss, train_acc = evaluate(model, self.vars.train_loader, self.criterion, self.vars.device)
-        val_loss, val_acc = evaluate(model, self.vars.val_loader, self.criterion, self.vars.device)
-        test_loss, test_acc = evaluate(model, self.vars.test_loader, self.criterion, self.vars.device)
+        train_loss, train_acc = evaluate(model, self.vars.train_loader, self.criterion, self.vars.device, desc_prefix="Train: ")
+        val_loss, val_acc = evaluate(model, self.vars.val_loader, self.criterion, self.vars.device, desc_prefix="Val:   ")
+        test_loss, test_acc = evaluate(model, self.vars.test_loader, self.criterion, self.vars.device, desc_prefix="Test:  ")
 
         results = dict(
             train_loss=train_loss,
@@ -282,12 +284,8 @@ class Experiment:
             test_loss=test_loss,
             test_acc=test_acc,
         )
-        pp(results)
-
         data.update(results)
-        df = pd.DataFrame([data])
-        df.to_csv(self.results_path, mode="a", index=False, header=not self.results_path.exists())
-        console.print(f"[bold green]Results saved to {self.results_path}[/bold green]")
+        self.write_results(data)
 
 
 def main() -> None:
