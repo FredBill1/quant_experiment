@@ -4,7 +4,7 @@ from typing import Optional
 import torch
 from optimum.quanto import QTensor
 from torch.utils.data import DataLoader
-from tqdm import tqdm
+from tqdm.rich import tqdm
 
 
 def get_device() -> str:
@@ -19,11 +19,14 @@ def train_one_epoch(
     device: str,
     *,
     scaler: Optional[torch.amp.GradScaler] = None,
+    max_step: Optional[int] = None,
 ) -> tuple[float, float]:
     model.to(device)
     model.train()
     total_loss, total_correct, total_samples = 0.0, 0, 0
-    pbar = tqdm(train_loader)
+    total = len(train_loader) if max_step is None else min(max_step, len(train_loader))
+    train_loader = islice(train_loader, max_step) if max_step is not None and max_step < len(train_loader) else train_loader
+    pbar = tqdm(train_loader, total=total)
     for inputs, targets in pbar:
         inputs, targets = inputs.to(device), targets.to(device)
         with torch.amp.autocast(torch.device(device).type, enabled=scaler is not None):
@@ -46,7 +49,7 @@ def train_one_epoch(
         total_correct += predicted.eq(targets).sum().item()
         total_samples += targets.size(0)
         loss, accuracy = total_loss / total_samples, total_correct / total_samples
-        pbar.set_description(f"{loss=:.4f} {accuracy=:.4f}")
+        pbar.set_description(f"[yellow]{loss=:.4f}[/yellow] [green]{accuracy=:.4f}[/green]")
     return loss, accuracy
 
 
@@ -61,8 +64,9 @@ def evaluate(
     model.to(device)
     model.eval()
     total_loss, total_correct, total_samples = 0.0, 0, 0
+    total = len(val_loader) if max_step is None else min(max_step, len(val_loader))
     val_loader = islice(val_loader, max_step) if max_step is not None and max_step < len(val_loader) else val_loader
-    pbar = tqdm(val_loader)
+    pbar = tqdm(val_loader, total=total)
     with torch.no_grad():
         for inputs, targets in pbar:
             inputs, targets = inputs.to(device), targets.to(device)
@@ -76,5 +80,5 @@ def evaluate(
             total_correct += predicted.eq(targets).sum().item()
             total_samples += targets.size(0)
             loss, accuracy = total_loss / total_samples, total_correct / total_samples
-            pbar.set_description(f"{loss=:.4f} {accuracy=:.4f}")
+            pbar.set_description(f"[yellow]{loss=:.4f}[/yellow] [green]{accuracy=:.4f}[/green]")
     return loss, accuracy

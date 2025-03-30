@@ -31,7 +31,15 @@ def is_decomposeable_linear(m: nn.Module) -> bool:
     )
 
 
-def decompose_model(model: nn.Module, trail: Trial, do_calculation: bool, *, layerwise: bool = True, skip_linear: bool = False) -> None:
+def decompose_model(
+    model: nn.Module,
+    trail: Trial,
+    do_calculation: bool,
+    *,
+    layerwise: bool = True,
+    skip_linear: bool = False,
+    verbose: bool = True,
+) -> None:
     tl.set_backend("pytorch")
     if not layerwise:
         factor = trail.suggest_float("decompose_rank_factor", MIN_DECOMPOSE_FACTOR, 1.0)
@@ -57,7 +65,8 @@ def decompose_model(model: nn.Module, trail: Trial, do_calculation: bool, *, lay
                     // (m.out_channels + m.in_channels + m.kernel_size[0] + m.kernel_size[1])
                 )
                 rank = max(1, min(CP_DECOMPOSE_MAX_RANK, round(max_rank * factor)))
-                tqdm.write(f"cp {fullname=} {rank=:.4f}")
+                if verbose:
+                    tqdm.write(f"cp {fullname=} {rank=:.4f}")
                 m_new = cp_decompose(m, rank, do_calculation)
             elif method == Conv2dDecomposeMethod.TUCKER:
                 # The maximum factor such that the number of parameters does not increase
@@ -69,7 +78,8 @@ def decompose_model(model: nn.Module, trail: Trial, do_calculation: bool, *, lay
 
                 shape = [m.out_channels, m.in_channels]
                 new_ranks = [max(1, round(x * factor * max_factor)) for x in shape]
-                tqdm.write(f"tucker {fullname=} {max_factor=:.4f} factor={factor*max_factor:.4f} {shape} -> {new_ranks}")
+                if verbose:
+                    tqdm.write(f"tucker {fullname=} {max_factor=:.4f} factor={factor*max_factor:.4f} {shape} -> {new_ranks}")
                 m_new = tucker_decompose(m, tuple(new_ranks), do_calculation)
 
         elif is_decomposeable_linear(m):
@@ -84,7 +94,8 @@ def decompose_model(model: nn.Module, trail: Trial, do_calculation: bool, *, lay
             max_rank = shape[0] * shape[1] // (shape[0] + shape[1])  # The maximum rank such that the number of parameters does not increase
             max_rank = min(max_rank, min(shape))  # The maximum rank is the minimum of the two dimensions
             rank = max(1, round(max_rank * factor))
-            tqdm.write(f"svd {fullname=} {shape=} {rank=:.4f}")
+            if verbose:
+                tqdm.write(f"svd {fullname=} {shape=} {rank=:.4f}")
             m_new = svd_decompose(m, rank, do_calculation)
 
         if m_new is not None:

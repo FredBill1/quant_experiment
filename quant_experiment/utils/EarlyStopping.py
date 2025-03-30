@@ -44,6 +44,10 @@ class EarlyStopping:
             raise ValueError("model hasn't been passed to the __call__ method")
         return self._best_state_dict
 
+    @property
+    def counter(self) -> int:
+        return self._counter
+
     @staticmethod
     def create_lr_scheduler(optimizer: torch.optim.Optimizer) -> torch.optim.lr_scheduler.ReduceLROnPlateau:
         return torch.optim.lr_scheduler.ReduceLROnPlateau(
