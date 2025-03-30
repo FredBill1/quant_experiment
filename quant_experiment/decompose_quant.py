@@ -199,13 +199,13 @@ class Experiment:
 
             data = asdict(replace(self.cfg, do_finetune=False, quant_weight=None, quant_act=None))
             results = dict(
-                model_size=model_size(model),
                 train_loss=train_loss,
                 train_acc=train_acc,
                 val_loss=val_loss,
                 val_acc=val_acc,
                 test_loss=test_loss,
                 test_acc=test_acc,
+                model_size=model_size(model),
             )
             data.update(results)
             self.write_results(data)
@@ -232,13 +232,13 @@ class Experiment:
 
             data = asdict(replace(self.cfg, do_finetune=True, quant_weight=None, quant_act=None))
             results = dict(
-                model_size=model_size(model),
                 train_loss=train_loss,
                 train_acc=train_acc,
                 val_loss=val_loss,
                 val_acc=val_acc,
                 test_loss=test_loss,
                 test_acc=test_acc,
+                model_size=model_size(model),
             )
             data.update(results)
             self.write_results(data)
@@ -284,13 +284,13 @@ class Experiment:
         test_loss, test_acc = evaluate(model, self.vars.test_loader, self.criterion, self.vars.device, desc_prefix="Test:  ")
 
         results = dict(
-            model_size=model_size(model),
             train_loss=train_loss,
             train_acc=train_acc,
             val_loss=val_loss,
             val_acc=val_acc,
             test_loss=test_loss,
             test_acc=test_acc,
+            model_size=model_size(model),
         )
         data.update(results)
         self.write_results(data)
