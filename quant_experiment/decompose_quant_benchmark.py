@@ -20,12 +20,15 @@ SAVED_MODEL_DIR = MODEL_PATH.with_name("decompose_quant")
 RESULTS_PATH = SAVED_MODEL_DIR / "tboard/results.csv"
 BENCHMARK_RESULTS_PATH = RESULTS_PATH.with_stem("benchmark_results")
 DECOMPOSE_FACTORS = np.linspace(0.1, 0.9, 9).tolist()
+MAX_STEPS = 20
 
 
 def run_one_epoch(model: nn.Module, dataloader: DataLoader, device: str) -> float:
     total_time_ns = 0
     total_samples = 0
-    for inputs, _ in tqdm(dataloader):
+    total = len(dataloader) if len(dataloader) < MAX_STEPS else MAX_STEPS
+    dataloader = islice(dataloader, MAX_STEPS) if len(dataloader) > MAX_STEPS else dataloader
+    for inputs, _ in tqdm(dataloader, total=total, desc="Benchmarking: "):
         inputs = inputs.to(device)
         with torch.no_grad():
             start = perf_counter_ns()
