@@ -28,7 +28,7 @@ def run_one_epoch(model: nn.Module, dataloader: DataLoader, device: str) -> floa
     total_samples = 0
     total = len(dataloader) if len(dataloader) < MAX_STEPS else MAX_STEPS
     dataloader = islice(dataloader, MAX_STEPS) if len(dataloader) > MAX_STEPS else dataloader
-    for inputs, _ in tqdm(dataloader, total=total, desc="Benchmarking: "):
+    for inputs, _ in tqdm(dataloader, total=total, desc="Benchmarking: ", position=0):
         inputs = inputs.to(device)
         with torch.no_grad():
             start = perf_counter_ns()
@@ -79,16 +79,18 @@ def load_model(row: pd.Series, device: str) -> nn.Module:
 
 def main() -> None:
     device = get_device()
+    print(f"{device=}")
+
     test_loader = get_imagewoof_dataloader(DatasetSplit.TEST, num_workers=6)
     df = pd.read_csv(RESULTS_PATH)
 
     finished = len(pd.read_csv(BENCHMARK_RESULTS_PATH)) if BENCHMARK_RESULTS_PATH.exists() else 0
 
-    for _, row in tqdm(islice(df.iterrows(), finished, len(df)), total=len(df) - finished, desc="Loading models"):
+    for _, row in tqdm(islice(df.iterrows(), finished, len(df)), total=len(df) - finished, desc="Loading models", position=1):
         model = load_model(row, device)
         time_per_image_ns = run_one_epoch(model, test_loader, device)
         df_row = pd.DataFrame([row])
-        df_row["time_per_image_ns"] = time_per_image_ns
+        df_row[f"{device}_time_per_image_ns"] = time_per_image_ns
         df_row.to_csv(BENCHMARK_RESULTS_PATH, mode="a", header=not BENCHMARK_RESULTS_PATH.exists(), index=False)
 
 

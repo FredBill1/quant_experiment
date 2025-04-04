@@ -46,7 +46,8 @@ def decompose_model(
         method = trail.suggest_categorical("decompose_method", [Conv2dDecomposeMethod.TUCKER, Conv2dDecomposeMethod.CP])
 
     named_modules = dict(model.named_modules())
-    for fullname, m in tqdm(named_modules.items(), desc="Decomposing"):
+    progress = tqdm(named_modules.items(), desc="Decomposing") if verbose else named_modules.items()
+    for fullname, m in progress:
         m_new = None
         if is_decomposeable_conv2d(m):
             if layerwise:
