@@ -6,7 +6,7 @@ from .models import create_model
 
 def main() -> None:
     model = create_model(MODEL_NAME, quantable=False)
-    summary(model, input_size=(1, 3, IMAGE_SIZE, IMAGE_SIZE))
+    summary(model, input_size=(1, 3, IMAGE_SIZE, IMAGE_SIZE), depth=2)
 
 
 if __name__ == "__main__":

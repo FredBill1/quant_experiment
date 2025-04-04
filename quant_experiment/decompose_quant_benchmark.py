@@ -39,7 +39,7 @@ def run_one_epoch(model: nn.Module, dataloader: DataLoader, device: str) -> floa
     return total_time_ns / max(1, total_samples)
 
 
-def load_model(row: pd.Series, device: str) -> nn.Module:
+def load_model(row: pd.Series, device: str) -> tuple[str, nn.Module]:
     isna = row.isna()
     do_decompose = not isna["decompose_method"]
     do_finetune = row["do_finetune"] == "True"
@@ -48,7 +48,7 @@ def load_model(row: pd.Series, device: str) -> nn.Module:
     model = create_model(MODEL_NAME, quantable=True).to(device)
     if not (do_decompose or do_quant):
         model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
-        return model
+        return "baseline", model
 
     decompose_method, decompose_factor = (row["decompose_method"], row["decompose_factor"]) if do_decompose else (None, None)
     quant_weight, quant_act = (row["quant_weight"], row["quant_act"]) if do_quant else (None, None)
@@ -74,7 +74,7 @@ def load_model(row: pd.Series, device: str) -> nn.Module:
     else:
         model.load_state_dict(torch.load(file, map_location=device))
 
-    return model
+    return file.stem, model
 
 
 def main() -> None:
@@ -86,8 +86,9 @@ def main() -> None:
 
     finished = len(pd.read_csv(BENCHMARK_RESULTS_PATH)) if BENCHMARK_RESULTS_PATH.exists() else 0
 
-    for _, row in tqdm(islice(df.iterrows(), finished, len(df)), total=len(df) - finished, desc="Loading models", position=1):
-        model = load_model(row, device)
+    for _, row in (pbar := tqdm(islice(df.iterrows(), finished, len(df)), total=len(df) - finished, position=1)):
+        name, model = load_model(row, device)
+        pbar.set_description(name)
         time_per_image_ns = run_one_epoch(model, test_loader, device)
         df_row = pd.DataFrame([row])
         df_row[f"{device}_time_per_image_ns"] = time_per_image_ns
