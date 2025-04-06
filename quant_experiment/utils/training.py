@@ -26,7 +26,11 @@ def train_one_epoch(
     max_step: Optional[int] = None,
     desc_prefix: str = "Train: ",
 ) -> tuple[float, float]:
+<<<<<<< Updated upstream
     model.to(device)
+=======
+    model.to("mps")
+>>>>>>> Stashed changes
     model.train()
     total_loss, total_correct, total_samples = 0.0, 0, 0
     total = len(train_loader) if max_step is None else min(max_step, len(train_loader))
